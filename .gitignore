@@ -1,0 +1,39 @@
+# ---------- 操作系统/编辑器产生的垃圾文件 ----------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ---------- IntelliJ IDEA（个人设置，无需共享） ----------
+.idea/
+*.iml
+*.iml.bak
+
+# ---------- VS Code（仅个人设置忽略，推荐配置需提交） ----------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ---------- Java / Maven（构建产物与本地配置） ----------
+target/
+*.class
+*.log
+.mvn/wrapper/maven-wrapper.jar
+
+# ---------- 前端依赖与构建产物 ----------
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# ---------- 真实密钥/环境变量（仅忽略含真实值的文件） ----------
+# .env 含真实配置，必须忽略；模板文件需提交，故显式放行
+myauth-web/.env
+myauth-web/.env.preview
+
+# ---------- 例外：以下以 . 开头的配置文件必须提交，强制放行 ----------
+!.editorconfig
+!.eslintrc.js
+!tests/unit/.eslintrc.js
+!.env.example
+!.gitignore

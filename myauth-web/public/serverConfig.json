@@ -1,0 +1,10 @@
+{
+  "publishRootUrl": "http://localhost:8080",
+  "localRootUrl": "http://localhost:8080",
+  "apiTimeout": 30000,
+  "projectName": "MyAuth",
+  "internetContentProvider": "浙ICP备000001号-1(伪)",
+  "copyright": "2022 Server By Daen,Lonely | Web By Shine",
+  "slogan": "My团队出品的权限管理工具\r\n🙂要永远相信",
+  "boardRefreshTime": 5000
+}
