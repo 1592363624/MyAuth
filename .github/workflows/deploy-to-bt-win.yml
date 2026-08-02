@@ -147,7 +147,10 @@ jobs:
           target: ${{ secrets.BACKEND_REMOTE_DIR }}
           # 不保留本地目录层级，直接将 jar 放到目标目录下
           strip_components: 2
-          overwrite: true
+          # 注意：Windows 自带 tar 为 bsdtar(libarchive)，不支持 GNU tar 的 --overwrite 选项，
+          # 设 true 会导致远端解压报 "Option --overwrite is not supported" 而失败；
+          # bsdtar 解压默认即覆盖同名文件，故此处必须为 false。
+          overwrite: false
 
       # 步骤 6：通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式）
       #
@@ -347,5 +350,7 @@ jobs:
           source: "myauth-web/dist/"
           target: ${{ secrets.FRONTEND_REMOTE_DIR }}
           strip_components: 2
-          # 直接覆盖同名文件，不清空目标目录，避免误删目标目录下其他文件（如用户自行放置的静态资源）
-          overwrite: true
+          # 注意：Windows 自带 tar 为 bsdtar(libarchive)，不支持 GNU tar 的 --overwrite 选项，
+          # 设 true 会报 "Option --overwrite is not supported" 而失败；bsdtar 解压默认即覆盖同名文件，
+          # 且不会清空目标目录（避免误删用户自行放置的静态资源），故此处必须为 false。
+          overwrite: false
