@@ -160,8 +160,8 @@ const generator = (routerMap, parent) => {
       name: uuid.v4(),
       // 该路由对应页面的 组件
       component,
-      // meta: 页面标题, 菜单图标, 页面权限(供指令权限用，可去掉)
-      meta: { title: item.title, icon: item.icon || undefined }
+      // meta: 页面标题, 菜单图标, 页面权限(供指令权限用，可去掉), 菜单描述
+      meta: { title: item.title, icon: item.icon || undefined, description: item.description || undefined }
     }
 
     // 有子菜单

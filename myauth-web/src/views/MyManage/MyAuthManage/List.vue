@@ -39,6 +39,8 @@
               <a-input
                 v-model="queryParam.user"
                 placeholder="账号"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -50,6 +52,8 @@
               <a-input
                 v-model="queryParam.name"
                 placeholder="昵称"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -61,6 +65,8 @@
               <a-input
                 v-model="queryParam.point"
                 placeholder="点数"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -73,6 +79,8 @@
                 <a-input
                   v-model="queryParam.qq"
                   placeholder="QQ"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -84,6 +92,8 @@
                 <a-input
                   v-model="queryParam.lastIp"
                   placeholder="最后登录IP"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -95,6 +105,8 @@
                 <a-input
                   v-model="queryParam.lastTime"
                   placeholder="最后登录时间戳"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -106,6 +118,8 @@
                 <a-input
                   v-model="queryParam.authTime"
                   placeholder="授权到期时间戳"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -117,6 +131,8 @@
                 <a-input
                   v-model="queryParam.deviceInfo"
                   placeholder="最后登录的设备"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -128,6 +144,8 @@
                 <a-input
                   v-model="queryParam.deviceCode"
                   placeholder="最后登录的设备机器码"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -139,6 +157,8 @@
                 <a-input
                   v-model="queryParam.ckey"
                   placeholder="卡密"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -150,6 +170,8 @@
                 <a-input
                   v-model="queryParam.remark"
                   placeholder="备注"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -265,31 +287,33 @@
 </template>
 
 <script>
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', fixed: 'left', dataIndex: 'fromSoftName', width: 100 },
-  { title: '所属版本', align: 'center', fixed: 'left', dataIndex: 'fromVerName', width: 100 },
+  { title: '所属软件', align: 'center', sorter: true, fixed: 'left', dataIndex: 'fromSoftName', width: 100 },
+  { title: '所属版本', align: 'center', sorter: true, fixed: 'left', dataIndex: 'fromVerName', width: 100 },
   { title: '管理员ID', align: 'center', sorter: true, dataIndex: 'fromAdminId', width: 100 },
-  { title: '用户', align: 'center', dataIndex: 'user', width: 100, scopedSlots: { customRender: 'longText' } },
-  { title: '昵称', align: 'center', dataIndex: 'name', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '密码', align: 'center', dataIndex: 'pass', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '用户', align: 'center', sorter: true, dataIndex: 'user', width: 100, scopedSlots: { customRender: 'longText' } },
+  { title: '昵称', align: 'center', sorter: true, dataIndex: 'name', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '密码', align: 'center', sorter: true, dataIndex: 'pass', width: '8%', scopedSlots: { customRender: 'longText' } },
   { title: '点数', align: 'center', sorter: true, dataIndex: 'point', width: '8%' },
-  { title: 'QQ', align: 'center', dataIndex: 'qq', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: 'QQ', align: 'center', sorter: true, dataIndex: 'qq', width: '8%', scopedSlots: { customRender: 'longText' } },
   { title: '注册时间', align: 'center', sorter: true, dataIndex: 'regTime', width: '8%', scopedSlots: { customRender: 'time' } },
   { title: '授权到期时间', align: 'center', sorter: true, dataIndex: 'authTime', width: 150, scopedSlots: { customRender: 'timeOut' } },
   { title: '最后登录时间', align: 'center', sorter: true, dataIndex: 'lastTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '最后登录IP', align: 'center', dataIndex: 'lastIp', width: '10%', scopedSlots: { customRender: 'longText' } },
+  { title: '最后登录IP', align: 'center', sorter: true, dataIndex: 'lastIp', width: '10%', scopedSlots: { customRender: 'longText' } },
   // { title: '软件Key', align:'center', dataIndex: 'fromSoftKey', width: '10%', scopedSlots: { customRender: 'longText' } },
   // { title: '软件版本Key', align:'center', dataIndex: 'fromVerKey', width: '10%', scopedSlots: { customRender: 'longText' } },
   // { title: 'Token', align:'center', dataIndex: 'token', width: '10%', scopedSlots: { customRender: 'longText' } },
-  { title: '最后登录设备信息', align: 'center', dataIndex: 'deviceInfo', width: '10%' },
-  { title: '最后登录设备机器码', align: 'center', dataIndex: 'deviceCode', width: '10%' },
-  { title: '卡密', align: 'center', dataIndex: 'ckey', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '在线状态', align: 'center', dataIndex: 'onlineType', width: '8%', scopedSlots: { customRender: 'online' } },
-  { title: '备注', align: 'center', dataIndex: 'remark', width: '15%', scopedSlots: { customRender: 'longText' } }
+  { title: '最后登录设备信息', align: 'center', sorter: true, dataIndex: 'deviceInfo', width: '10%' },
+  { title: '最后登录设备机器码', align: 'center', sorter: true, dataIndex: 'deviceCode', width: '10%' },
+  { title: '卡密', align: 'center', sorter: true, dataIndex: 'ckey', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '在线状态', align: 'center', sorter: true, dataIndex: 'onlineType', width: '8%', scopedSlots: { customRender: 'online' } },
+  { title: '备注', align: 'center', sorter: true, dataIndex: 'remark', width: '15%', scopedSlots: { customRender: 'longText' } }
 ]
 
 export default {
+  mixins: [listMixin],
   mounted () {
     this.getDataList()
     this.getMySoftListEx()

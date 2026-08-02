@@ -161,18 +161,20 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '通道名', align: 'center', dataIndex: 'name', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '通道标识', align: 'center', dataIndex: 'driver', width: '8%' },
-  { title: '通道配置', align: 'center', dataIndex: 'config', width: '15%', scopedSlots: { customRender: 'longText' } },
-  { title: '通道说明', align: 'center', dataIndex: 'content', width: '20%' },
-  { title: '修改时间', align: 'center', dataIndex: 'updateTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '是否启用', align: 'center', dataIndex: 'enabled', width: '8%', scopedSlots: { customRender: 'enabled' } },
+  { title: '通道名', align: 'center', sorter: true, dataIndex: 'name', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '通道标识', align: 'center', sorter: true, dataIndex: 'driver', width: '8%' },
+  { title: '通道配置', align: 'center', sorter: true, dataIndex: 'config', width: '15%', scopedSlots: { customRender: 'longText' } },
+  { title: '通道说明', align: 'center', sorter: true, dataIndex: 'content', width: '20%' },
+  { title: '修改时间', align: 'center', sorter: true, dataIndex: 'updateTime', width: '8%', scopedSlots: { customRender: 'time' } },
+  { title: '是否启用', align: 'center', sorter: true, dataIndex: 'enabled', width: '8%', scopedSlots: { customRender: 'enabled' } },
   { title: '操作', dataIndex: 'action', align: 'left', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

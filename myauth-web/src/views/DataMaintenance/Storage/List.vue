@@ -72,6 +72,8 @@
               <a-input
                 v-model="queryParam.content"
                 placeholder="内容"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -83,6 +85,8 @@
               <a-input
                 v-model="queryParam.number"
                 placeholder="次数"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -96,6 +100,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="回复状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">禁用</a-select-option>
@@ -110,6 +115,8 @@
               <a-input
                 v-model="queryParam.remark"
                 placeholder="备注"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -200,18 +207,20 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '所属存储类型', align: 'center', dataIndex: 'fromStorageTypeName', width: '8%' },
-  { title: '内容', align: 'center', dataIndex: 'content', width: '25%' },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '所属存储类型', align: 'center', sorter: true, dataIndex: 'fromStorageTypeName', width: '8%' },
+  { title: '内容', align: 'center', sorter: true, dataIndex: 'content', width: '25%' },
   { title: '次数', align: 'center', sorter: true, dataIndex: 'number', width: '8%' },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
-  { title: '备注', align: 'center', dataIndex: 'remark', scopedSlots: { customRender: 'longText' } },
+  { title: '备注', align: 'center', sorter: true, dataIndex: 'remark', scopedSlots: { customRender: 'longText' } },
   { title: '操作', dataIndex: 'action', align: 'center', width: '250px', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

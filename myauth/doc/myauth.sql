@@ -306,44 +306,54 @@ CREATE TABLE `ma_menu`  (
   `path` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
   `title` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL,
   `icon` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
+  `description` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '菜单描述，用于前端提示',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = MyISAM AUTO_INCREMENT = 1 CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of ma_menu
 -- ----------------------------
-INSERT INTO `ma_menu` VALUES ('59664367-11eb-489e-867d-af6c66129d03', '0', 1, 1, 2, '/Home/Introduce', '首页', 'home');
-INSERT INTO `ma_menu` VALUES ('30633357-dd12-415e-8631-660e2aa6b9ad', '0', 1, 3, 1, NULL, '信息管理', 'info-circle');
-INSERT INTO `ma_menu` VALUES ('e70b3176-a2fa-4fc5-90f3-5abd9e2d13b8', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 2, 2, '/DataMaintenance/PassCardManage/List', '卡密管理', NULL);
-INSERT INTO `ma_menu` VALUES ('e50cadbc-8b2b-4c8f-a262-9da95d3371bb', '30633357-dd12-415e-8631-660e2aa6b9ad', 2, 1, 2, '/InfoManage/SoftManage/List', '软件管理', '');
-INSERT INTO `ma_menu` VALUES ('94beb8ae-a606-4dea-bfa8-57bc734818bf', '30633357-dd12-415e-8631-660e2aa6b9ad', 2, 2, 2, '/InfoManage/VersionsManage/List', '版本管理', '');
-INSERT INTO `ma_menu` VALUES ('bcb68a35-eb0f-4696-acd8-3c76897e0f0f', '30633357-dd12-415e-8631-660e2aa6b9ad', 2, 3, 2, '/InfoManage/UserManage/List', '用户管理', '');
-INSERT INTO `ma_menu` VALUES ('d6321208-4980-46e3-b3d4-ec057009472c', '0', 1, 4, 1, NULL, '数据维护', 'database');
-INSERT INTO `ma_menu` VALUES ('b89eb2d8-40e4-4698-ab5a-ddaed7846ee1', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 1, 2, '/DataMaintenance/MsgManage/List', '回复管理', NULL);
-INSERT INTO `ma_menu` VALUES ('1d3838df-bc61-42e1-a149-dcc2705e2894', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 3, 2, '/DataMaintenance/FuncManage/List', '函数管理', NULL);
-INSERT INTO `ma_menu` VALUES ('5b35fe6a-da5f-46d5-b1ed-076308a38a13', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 4, 2, '/DataMaintenance/EventManage/List', '事件管理', NULL);
-INSERT INTO `ma_menu` VALUES ('922666ba-1ed1-4b6b-9043-30aeead1eebe', 'da3af6df-cd00-4746-b788-bd2dfeab716f', 2, 1, 2, '/MyManage/MyAuthManage/List', '我的授权', NULL);
-INSERT INTO `ma_menu` VALUES ('dbe9effe-0dc8-4378-a64c-5bf904ac6fae', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 6, 2, '/DataMaintenance/DataManage/List', '数据管理', NULL);
-INSERT INTO `ma_menu` VALUES ('a59b674e-8d45-46c2-be6e-ff44d2ee7b86', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 5, 2, '/DataMaintenance/BannedManage/List', '封禁管理', NULL);
-INSERT INTO `ma_menu` VALUES ('da3af6df-cd00-4746-b788-bd2dfeab716f', '0', 1, 6, 1, NULL, '我的管理', 'user');
-INSERT INTO `ma_menu` VALUES ('43767678-01c5-4b54-bfac-e108b6ceb32a', '0', 1, 5, 1, NULL, '系统管理', 'setting');
-INSERT INTO `ma_menu` VALUES ('d7720078-3b65-4f83-b404-c117e5c46b68', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 1, 2, '/SystemManage/AdminManage/List', '管理员管理', NULL);
-INSERT INTO `ma_menu` VALUES ('546ea73a-1d46-41f5-bfa6-e646b3e741ae', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 4, 2, '/SystemManage/MenuManage/List', '菜单管理', NULL);
-INSERT INTO `ma_menu` VALUES ('d27462d2-b316-4983-9066-f283fcf17e46', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 7, 2, '/SystemManage/SettingManage/index', '系统管理', NULL);
-INSERT INTO `ma_menu` VALUES ('d58b4547-e20f-4eb9-b7d5-b3195ed5cc18', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 5, 2, '/SystemManage/RoleManage/List', '角色管理', NULL);
-INSERT INTO `ma_menu` VALUES ('014bf6d7-cff3-4b61-aa3b-f59cc0dd3235', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 6, 2, '/SystemManage/StrategyManage/List', '策略管理', NULL);
-INSERT INTO `ma_menu` VALUES ('71eedb8d-ae9e-4958-a351-c8dfb4711f21', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 3, 2, '/SystemManage/LogManage/List', '用户日志', NULL);
-INSERT INTO `ma_menu` VALUES ('9d953050-f354-4e9f-9f15-b91ea6a666f0', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 2, 2, '/SystemManage/AdminLogManage/List', '管理员日志', NULL);
-INSERT INTO `ma_menu` VALUES ('23a8778f-9424-449a-a68e-54b12e4c30f3', 'da3af6df-cd00-4746-b788-bd2dfeab716f', 2, 2, 2, '/MyManage/MyPassCardManage/List', '我的卡密', NULL);
-INSERT INTO `ma_menu` VALUES ('cd256048-3f8e-4fb7-ada3-55d538ce7611', 'da3af6df-cd00-4746-b788-bd2dfeab716f', 2, 3, 2, '/MyManage/MyBalanceManage/List', '我的余额', NULL);
-INSERT INTO `ma_menu` VALUES ('d499258d-ea25-47e1-b580-ed98830df37f', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 7, 2, '/DataMaintenance/AgencyPassCardManage/List', '代理卡密', NULL);
-INSERT INTO `ma_menu` VALUES ('e4fa47b7-aa79-4708-9ce1-c7b686db6a50', NULL, 1, 2, 2, '/DataStatistics/List', '数据看板', 'radar-chart');
-INSERT INTO `ma_menu` VALUES ('ddff63b5-38db-4889-882d-fd9d9c4e583f', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 8, 2, '/SystemManage/StorageType/List', '额外存储类型', NULL);
-INSERT INTO `ma_menu` VALUES ('9b69d1b6-f0a6-48f9-9f25-cc121fda88aa', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 8, 2, '/DataMaintenance/Storage/List', '额外存储', NULL);
-INSERT INTO `ma_menu` VALUES ('1599a39b-38ce-4fca-9819-5fead2e63546', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 9, 2, '/SystemManage/EpayManage/List', '支付通道管理', NULL);
-INSERT INTO `ma_menu` VALUES ('8dcc2036-3b90-4033-abdb-2d7a5636998e', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 9, 2, '/DataMaintenance/EpayOrdersManage/List', '支付订单管理', NULL);
-INSERT INTO `ma_menu` VALUES ('7ddb181b-3c6a-4a63-b45c-172ee8d7917b', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 10, 2, '/SystemManage/MailManage/List', '邮件通知管理', NULL);
-INSERT INTO `ma_menu` VALUES ('f9a80e4a-d473-40f9-847b-74916815c7b7', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 3, 2, '/SystemManage/OperationLogManage/List', '操作日志', NULL);
+INSERT INTO `ma_menu` VALUES ('59664367-11eb-489e-867d-af6c66129d03', '0', 1, 1, 2, '/Home/Introduce', '首页', 'home', '系统概览与快捷入口');
+INSERT INTO `ma_menu` VALUES ('e4fa47b7-aa79-4708-9ce1-c7b686db6a50', NULL, 1, 2, 2, '/DataStatistics/List', '数据看板', 'radar-chart', '可视化数据统计与分析');
+INSERT INTO `ma_menu` VALUES ('30633357-dd12-415e-8631-660e2aa6b9ad', '0', 1, 3, 1, NULL, '信息管理', 'info-circle', NULL);
+INSERT INTO `ma_menu` VALUES ('e50cadbc-8b2b-4c8f-a262-9da95d3371bb', '30633357-dd12-415e-8631-660e2aa6b9ad', 2, 1, 2, '/InfoManage/SoftManage/List', '软件管理', '', '管理软件产品配置');
+INSERT INTO `ma_menu` VALUES ('94beb8ae-a606-4dea-bfa8-57bc734818bf', '30633357-dd12-415e-8631-660e2aa6b9ad', 2, 2, 2, '/InfoManage/VersionsManage/List', '版本管理', '', '管理软件版本发布');
+INSERT INTO `ma_menu` VALUES ('bcb68a35-eb0f-4696-acd8-3c76897e0f0f', '30633357-dd12-415e-8631-660e2aa6b9ad', 2, 3, 2, '/InfoManage/UserManage/List', '用户管理', '', '管理终端用户账号');
+-- 数据维护（一级目录）
+INSERT INTO `ma_menu` VALUES ('d6321208-4980-46e3-b3d4-ec057009472c', '0', 1, 4, 1, NULL, '数据维护', 'database', NULL);
+-- 数据维护 > 卡密交易（二级分组）
+INSERT INTO `ma_menu` VALUES ('c1a2b3d4-e5f6-7890-abcd-ef1234560001', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 1, 1, NULL, '卡密交易', 'credit-card', '卡密生成、分发与订单管理');
+INSERT INTO `ma_menu` VALUES ('e70b3176-a2fa-4fc5-90f3-5abd9e2d13b8', 'c1a2b3d4-e5f6-7890-abcd-ef1234560001', 3, 1, 2, '/DataMaintenance/PassCardManage/List', '卡密管理', 'key', '生成、查询与核销授权卡密');
+INSERT INTO `ma_menu` VALUES ('d499258d-ea25-47e1-b580-ed98830df37f', 'c1a2b3d4-e5f6-7890-abcd-ef1234560001', 3, 2, 2, '/DataMaintenance/AgencyPassCardManage/List', '代理卡密', 'team', '代理商卡密生成与分发管理');
+INSERT INTO `ma_menu` VALUES ('8dcc2036-3b90-4033-abdb-2d7a5636998e', 'c1a2b3d4-e5f6-7890-abcd-ef1234560001', 3, 3, 2, '/DataMaintenance/EpayOrdersManage/List', '支付订单', 'pay-circle', '查看与管理在线支付订单');
+-- 数据维护 > 自动化（二级分组）
+INSERT INTO `ma_menu` VALUES ('c1a2b3d4-e5f6-7890-abcd-ef1234560002', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 2, 1, NULL, '自动化', 'thunderbolt', '自动回复、脚本与事件规则');
+INSERT INTO `ma_menu` VALUES ('b89eb2d8-40e4-4698-ab5a-ddaed7846ee1', 'c1a2b3d4-e5f6-7890-abcd-ef1234560002', 3, 1, 2, '/DataMaintenance/MsgManage/List', '回复管理', 'message', '配置关键词自动回复规则');
+INSERT INTO `ma_menu` VALUES ('1d3838df-bc61-42e1-a149-dcc2705e2894', 'c1a2b3d4-e5f6-7890-abcd-ef1234560002', 3, 2, 2, '/DataMaintenance/FuncManage/List', '脚本函数', 'code', '管理自定义JS脚本函数');
+INSERT INTO `ma_menu` VALUES ('5b35fe6a-da5f-46d5-b1ed-076308a38a13', 'c1a2b3d4-e5f6-7890-abcd-ef1234560002', 3, 3, 2, '/DataMaintenance/EventManage/List', '事件管理', 'schedule', '配置点数/时长变动事件规则');
+-- 数据维护 > 数据与存储（二级分组）
+INSERT INTO `ma_menu` VALUES ('c1a2b3d4-e5f6-7890-abcd-ef1234560003', 'd6321208-4980-46e3-b3d4-ec057009472c', 2, 3, 1, NULL, '数据与存储', 'hdd', '业务数据存储与访问控制');
+INSERT INTO `ma_menu` VALUES ('dbe9effe-0dc8-4378-a64c-5bf904ac6fae', 'c1a2b3d4-e5f6-7890-abcd-ef1234560003', 3, 1, 2, '/DataMaintenance/DataManage/List', '数据管理', 'table', '管理客户端上报的业务数据');
+INSERT INTO `ma_menu` VALUES ('9b69d1b6-f0a6-48f9-9f25-cc121fda88aa', 'c1a2b3d4-e5f6-7890-abcd-ef1234560003', 3, 2, 2, '/DataMaintenance/Storage/List', '扩展存储', 'cloud', '管理客户端额外存储数据');
+INSERT INTO `ma_menu` VALUES ('a59b674e-8d45-46c2-be6e-ff44d2ee7b86', 'c1a2b3d4-e5f6-7890-abcd-ef1234560003', 3, 3, 2, '/DataMaintenance/BannedManage/List', '封禁管理', 'stop', '管理用户/设备封禁规则');
+-- 我的管理
+INSERT INTO `ma_menu` VALUES ('da3af6df-cd00-4746-b788-bd2dfeab716f', '0', 1, 6, 1, NULL, '我的管理', 'user', NULL);
+INSERT INTO `ma_menu` VALUES ('922666ba-1ed1-4b6b-9043-30aeead1eebe', 'da3af6df-cd00-4746-b788-bd2dfeab716f', 2, 1, 2, '/MyManage/MyAuthManage/List', '我的授权', NULL, '查看当前账号的授权列表');
+INSERT INTO `ma_menu` VALUES ('23a8778f-9424-449a-a68e-54b12e4c30f3', 'da3af6df-cd00-4746-b788-bd2dfeab716f', 2, 2, 2, '/MyManage/MyPassCardManage/List', '我的卡密', NULL, '查看当前账号的卡密');
+INSERT INTO `ma_menu` VALUES ('cd256048-3f8e-4fb7-ada3-55d538ce7611', 'da3af6df-cd00-4746-b788-bd2dfeab716f', 2, 3, 2, '/MyManage/MyBalanceManage/List', '我的余额', NULL, '查看当前账号余额明细');
+-- 系统管理
+INSERT INTO `ma_menu` VALUES ('43767678-01c5-4b54-bfac-e108b6ceb32a', '0', 1, 5, 1, NULL, '系统管理', 'setting', NULL);
+INSERT INTO `ma_menu` VALUES ('d7720078-3b65-4f83-b404-c117e5c46b68', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 1, 2, '/SystemManage/AdminManage/List', '管理员管理', NULL, '管理系统管理员账号');
+INSERT INTO `ma_menu` VALUES ('9d953050-f354-4e9f-9f15-b91ea6a666f0', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 2, 2, '/SystemManage/AdminLogManage/List', '管理员日志', NULL, '查看管理员操作记录');
+INSERT INTO `ma_menu` VALUES ('71eedb8d-ae9e-4958-a351-c8dfb4711f21', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 3, 2, '/SystemManage/LogManage/List', '用户日志', NULL, '查看用户操作日志');
+INSERT INTO `ma_menu` VALUES ('f9a80e4a-d473-40f9-847b-74916815c7b7', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 3, 2, '/SystemManage/OperationLogManage/List', '操作日志', NULL, '查看系统操作日志');
+INSERT INTO `ma_menu` VALUES ('d58b4547-e20f-4eb9-b7d5-b3195ed5cc18', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 5, 2, '/SystemManage/RoleManage/List', '角色管理', NULL, '管理角色权限分配');
+INSERT INTO `ma_menu` VALUES ('014bf6d7-cff3-4b61-aa3b-f59cc0dd3235', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 6, 2, '/SystemManage/StrategyManage/List', '策略管理', NULL, '配置授权验证策略');
+INSERT INTO `ma_menu` VALUES ('546ea73a-1d46-41f5-bfa6-e646b3e741ae', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 4, 2, '/SystemManage/MenuManage/List', '菜单管理', NULL, '管理系统菜单结构');
+INSERT INTO `ma_menu` VALUES ('d27462d2-b316-4983-9066-f283fcf17e46', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 7, 2, '/SystemManage/SettingManage/index', '系统管理', NULL, '系统参数配置');
+INSERT INTO `ma_menu` VALUES ('ddff63b5-38db-4889-882d-fd9d9c4e583f', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 8, 2, '/SystemManage/StorageType/List', '存储类型管理', NULL, '管理扩展存储的分类类型');
+INSERT INTO `ma_menu` VALUES ('1599a39b-38ce-4fca-9819-5fead2e63546', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 9, 2, '/SystemManage/EpayManage/List', '支付通道管理', NULL, '配置在线支付通道');
+INSERT INTO `ma_menu` VALUES ('7ddb181b-3c6a-4a63-b45c-172ee8d7917b', '43767678-01c5-4b54-bfac-e108b6ceb32a', 2, 10, 2, '/SystemManage/MailManage/List', '邮件通知管理', NULL, '配置邮件通知规则');
 
 -- ----------------------------
 -- Table structure for ma_msg

@@ -28,6 +28,8 @@
               <a-input
                 v-model="queryParam.Id"
                 placeholder="日志ID"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -39,6 +41,8 @@
               <a-input
                 v-model="queryParam.operationUser"
                 placeholder="操作账号"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -50,6 +54,8 @@
               <a-input
                 v-model="queryParam.operationUa"
                 placeholder="操作UA"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -61,6 +67,8 @@
               <a-input
                 v-model="queryParam.operationIp"
                 placeholder="操作IP"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -72,6 +80,8 @@
               <a-input
                 v-model="queryParam.operationTime"
                 placeholder="操作时间"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -84,6 +94,8 @@
                 v-model="queryParam.operationType"
                 placeholder="操作内容"
                 style="width:150px;"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -149,19 +161,21 @@
 
 <script>
 // import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: 'ID', align: 'center', dataIndex: 'id', width: '5%' },
-  { title: '操作账号', align: 'center', dataIndex: 'operationUser', width: '8%' },
-  { title: '操作UA', align: 'center', dataIndex: 'operationUa', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '操作IP', align: 'center', dataIndex: 'operationIp', width: '8%' },
-  { title: '操作时间', align: 'center', dataIndex: 'operationTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '操作内容', align: 'center', dataIndex: 'operationType', width: '15%' }
+  { title: 'ID', align: 'center', sorter: true, dataIndex: 'id', width: '5%' },
+  { title: '操作账号', align: 'center', sorter: true, dataIndex: 'operationUser', width: '8%' },
+  { title: '操作UA', align: 'center', sorter: true, dataIndex: 'operationUa', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '操作IP', align: 'center', sorter: true, dataIndex: 'operationIp', width: '8%' },
+  { title: '操作时间', align: 'center', sorter: true, dataIndex: 'operationTime', width: '8%', scopedSlots: { customRender: 'time' } },
+  { title: '操作内容', align: 'center', sorter: true, dataIndex: 'operationType', width: '15%' }
 
   // { title: '操作', dataIndex: 'action', align:'center', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     // EditForm
   },

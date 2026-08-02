@@ -28,6 +28,8 @@
               <a-input
                 v-model="queryParam.id"
                 placeholder="id"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -79,6 +81,8 @@
               <a-input
                 v-model="queryParam.user"
                 placeholder="账号"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -90,6 +94,8 @@
               <a-input
                 v-model="queryParam.qq"
                 placeholder="QQ"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -101,6 +107,8 @@
               <a-input
                 v-model="queryParam.regTime"
                 placeholder="注册时间戳"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -112,6 +120,8 @@
               <a-input
                 v-model="queryParam.lastTime"
                 placeholder="最后登录时间戳"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -123,6 +133,8 @@
               <a-input
                 v-model="queryParam.lastIp"
                 placeholder="最后登录IP"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -135,6 +147,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">禁用</a-select-option>
@@ -258,24 +271,26 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: 'Id', align: 'center', dataIndex: 'id', width: '8%' },
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '账号', align: 'center', dataIndex: 'user', width: '8%' },
-  { title: 'QQ', align: 'center', dataIndex: 'qq', width: '8%' },
-  { title: '密码', align: 'center', dataIndex: 'pass', width: '8%' },
-  { title: '角色名', align: 'center', dataIndex: 'roleName', width: '8%' },
-  { title: '账户余额', align: 'center', dataIndex: 'money', width: '8%' },
-  { title: '最后登录IP', align: 'center', dataIndex: 'lastIp', width: '8%' },
-  { title: 'Token', align: 'center', dataIndex: 'token', width: '8%' },
-  { title: '注册时间', align: 'center', dataIndex: 'regTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '最后登录时间', align: 'center', dataIndex: 'lastTime', width: '8%', scopedSlots: { customRender: 'time' } },
+  { title: 'Id', align: 'center', sorter: true, dataIndex: 'id', width: '8%' },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '账号', align: 'center', sorter: true, dataIndex: 'user', width: '8%' },
+  { title: 'QQ', align: 'center', sorter: true, dataIndex: 'qq', width: '8%' },
+  { title: '密码', align: 'center', sorter: true, dataIndex: 'pass', width: '8%' },
+  { title: '角色名', align: 'center', sorter: true, dataIndex: 'roleName', width: '8%' },
+  { title: '账户余额', align: 'center', sorter: true, dataIndex: 'money', width: '8%' },
+  { title: '最后登录IP', align: 'center', sorter: true, dataIndex: 'lastIp', width: '8%' },
+  { title: 'Token', align: 'center', sorter: true, dataIndex: 'token', width: '8%' },
+  { title: '注册时间', align: 'center', sorter: true, dataIndex: 'regTime', width: '8%', scopedSlots: { customRender: 'time' } },
+  { title: '最后登录时间', align: 'center', sorter: true, dataIndex: 'lastTime', width: '8%', scopedSlots: { customRender: 'time' } },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
   { title: '操作', dataIndex: 'action', align: 'center', fixed: 'right', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

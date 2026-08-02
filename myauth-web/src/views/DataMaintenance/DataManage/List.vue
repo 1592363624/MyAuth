@@ -66,6 +66,8 @@
               <a-input
                 v-model="queryParam.type"
                 placeholder="上报类型"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -77,6 +79,8 @@
               <a-input
                 v-model="queryParam.content"
                 placeholder="上报内容"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -88,6 +92,8 @@
               <a-input
                 v-model="queryParam.deviceCode"
                 placeholder="机器码"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -100,6 +106,8 @@
                 <a-input
                   v-model="queryParam.ip"
                   placeholder="上报ip"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -111,6 +119,8 @@
                 <a-input
                   v-model="queryParam.addTime"
                   placeholder="上报时间戳"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -122,6 +132,8 @@
                 <a-input
                   v-model="queryParam.deviceInfo"
                   placeholder="设备信息"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -233,20 +245,22 @@
 
 <script>
 // import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '所属版本', align: 'center', dataIndex: 'fromVer', width: '8%' },
-  { title: '上报类型', align: 'center', dataIndex: 'type', width: '8%' },
-  { title: '上报内容', align: 'center', dataIndex: 'content', width: '8%' },
-  { title: '上报IP', align: 'center', dataIndex: 'ip', width: '8%' },
-  { title: '添加时间', align: 'center', dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '设备信息', align: 'center', dataIndex: 'deviceInfo', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '设备机器码', align: 'center', dataIndex: 'deviceCode', width: '10%', scopedSlots: { customRender: 'longText' } }
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '所属版本', align: 'center', sorter: true, dataIndex: 'fromVer', width: '8%' },
+  { title: '上报类型', align: 'center', sorter: true, dataIndex: 'type', width: '8%' },
+  { title: '上报内容', align: 'center', sorter: true, dataIndex: 'content', width: '8%' },
+  { title: '上报IP', align: 'center', sorter: true, dataIndex: 'ip', width: '8%' },
+  { title: '添加时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
+  { title: '设备信息', align: 'center', sorter: true, dataIndex: 'deviceInfo', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '设备机器码', align: 'center', sorter: true, dataIndex: 'deviceCode', width: '10%', scopedSlots: { customRender: 'longText' } }
   // { title: '操作', dataIndex: 'action', align:'center', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     // EditForm
   },

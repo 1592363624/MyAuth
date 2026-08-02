@@ -25,6 +25,8 @@
               <a-input
                 v-model="queryParam.skey"
                 placeholder="软件skey(精准)"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -36,6 +38,8 @@
               <a-input
                 v-model="queryParam.name"
                 placeholder="软件名称"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -48,6 +52,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="2">维护</a-select-option>
@@ -64,6 +69,7 @@
                 v-model="queryParam.type"
                 allowClear
                 placeholder="类型"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">免费</a-select-option>
                 <a-select-option :key="0">收费</a-select-option>
@@ -79,6 +85,7 @@
                 v-model="queryParam.genStatus"
                 allowClear
                 placeholder="数据是否加密"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">加密</a-select-option>
                 <a-select-option :key="0">不加密</a-select-option>
@@ -94,6 +101,7 @@
                 v-model="queryParam.bindDeviceCode"
                 allowClear
                 placeholder="是否绑定机器码"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">绑定</a-select-option>
                 <a-select-option :key="0">不绑定</a-select-option>
@@ -109,6 +117,7 @@
                 v-model="queryParam.register"
                 allowClear
                 placeholder="是否开启注册"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">开启</a-select-option>
                 <a-select-option :key="0">关闭</a-select-option>
@@ -296,6 +305,7 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 /** 若需使用，请修改路径 */
 // import VersionsManage from './VersionsManage/List'
 // import MsgManage from './MsgManage/List'
@@ -320,6 +330,7 @@ const columns = [
 ]
 
 export default {
+  mixins: [listMixin],
   // mixins: [mixin, mixinDevice],
   components: {
     EditForm

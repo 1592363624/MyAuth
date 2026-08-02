@@ -251,17 +251,19 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '发送类型', align: 'center', dataIndex: 'sendType', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '发送开关', align: 'center', dataIndex: 'sendSwitch', width: '8%', scopedSlots: { customRender: 'sendSwitch' } },
-  { title: '主题', align: 'center', dataIndex: 'sendTheme', width: '15%' },
-  { title: '标题', align: 'center', dataIndex: 'sendTitle', width: '15%' },
-  { title: '模板', align: 'center', dataIndex: 'sendTemplates', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '发送类型', align: 'center', sorter: true, dataIndex: 'sendType', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '发送开关', align: 'center', sorter: true, dataIndex: 'sendSwitch', width: '8%', scopedSlots: { customRender: 'sendSwitch' } },
+  { title: '主题', align: 'center', sorter: true, dataIndex: 'sendTheme', width: '15%' },
+  { title: '标题', align: 'center', sorter: true, dataIndex: 'sendTitle', width: '15%' },
+  { title: '模板', align: 'center', sorter: true, dataIndex: 'sendTemplates', width: '8%', scopedSlots: { customRender: 'longText' } },
   { title: '操作', dataIndex: 'action', align: 'left', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

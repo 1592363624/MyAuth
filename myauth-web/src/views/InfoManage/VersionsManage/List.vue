@@ -55,6 +55,8 @@
               <a-input
                 v-model="queryParam.ver"
                 placeholder="版本号(精准)"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -66,6 +68,8 @@
               <a-input
                 v-model="queryParam.vkey"
                 placeholder="版本key(精准)"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -78,6 +82,7 @@
                 v-model="queryParam.updType"
                 allowClear
                 placeholder="更新模式"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">强制</a-select-option>
                 <a-select-option :key="0">可选</a-select-option>
@@ -93,6 +98,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">停用</a-select-option>
@@ -204,6 +210,7 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
   { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
@@ -217,6 +224,7 @@ const columns = [
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

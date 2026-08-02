@@ -48,6 +48,8 @@
               <a-input
                 v-model="queryParam.type"
                 placeholder="关键词"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -60,6 +62,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="回复状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">禁用</a-select-option>
@@ -152,15 +155,17 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '关键词', align: 'center', dataIndex: 'type', width: '8%' },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '关键词', align: 'center', sorter: true, dataIndex: 'type', width: '8%' },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
   { title: '操作', dataIndex: 'action', align: 'center', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

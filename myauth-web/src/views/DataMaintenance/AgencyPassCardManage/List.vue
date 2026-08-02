@@ -250,18 +250,20 @@
 import EditForm from './EditForm'
 import AddForm from './AddForm'
 import TokenCache from '@/utils/cache/TokenCache'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '卡密', align: 'center', dataIndex: 'ckey', width: '12%' },
-  { title: '面额', align: 'center', dataIndex: 'money', width: '8%' },
+  { title: '卡密', align: 'center', sorter: true, dataIndex: 'ckey', width: '12%' },
+  { title: '面额', align: 'center', sorter: true, dataIndex: 'money', width: '8%' },
   { title: '添加时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
   { title: '使用时间', align: 'center', sorter: true, dataIndex: 'letTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '使用人账号', align: 'center', dataIndex: 'letUser', width: '8%', scopedSlots: { customRender: 'user' } },
-  { title: '卡密状态', align: 'center', dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
+  { title: '使用人账号', align: 'center', sorter: true, dataIndex: 'letUser', width: '8%', scopedSlots: { customRender: 'user' } },
+  { title: '卡密状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
   { title: '操作', dataIndex: 'action', align: 'center', fixed: 'right', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm,
     AddForm

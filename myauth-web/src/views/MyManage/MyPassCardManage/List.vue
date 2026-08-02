@@ -50,6 +50,8 @@
               <a-input
                 v-model="queryParam.ckey"
                 placeholder="卡密"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -61,6 +63,8 @@
               <a-input
                 v-model="queryParam.point"
                 placeholder="点数"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -72,6 +76,8 @@
               <a-input
                 v-model="queryParam.seconds"
                 placeholder="秒数"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -83,6 +89,8 @@
               <a-input
                 v-model="queryParam.letUser"
                 placeholder="使用人账号"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -95,6 +103,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">已使用</a-select-option>
                 <a-select-option :key="2">被禁用</a-select-option>
@@ -199,20 +208,22 @@
 <script>
 import AddForm from './AddForm'
 import TokenCache from '@/utils/cache/TokenCache'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '管理员Id', align: 'center', dataIndex: 'fromAdminId', width: '8%' },
-  { title: '卡密', align: 'center', dataIndex: 'ckey', width: '12%' },
-  { title: '点数', align: 'center', dataIndex: 'point', width: '8%' },
-  { title: '秒数', align: 'center', dataIndex: 'seconds', width: '8%' },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '管理员Id', align: 'center', sorter: true, dataIndex: 'fromAdminId', width: '8%' },
+  { title: '卡密', align: 'center', sorter: true, dataIndex: 'ckey', width: '12%' },
+  { title: '点数', align: 'center', sorter: true, dataIndex: 'point', width: '8%' },
+  { title: '秒数', align: 'center', sorter: true, dataIndex: 'seconds', width: '8%' },
   { title: '添加时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
   { title: '使用时间', align: 'center', sorter: true, dataIndex: 'letTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '使用人账号', align: 'center', dataIndex: 'letUser', width: '8%', scopedSlots: { customRender: 'user' } },
-  { title: '卡密状态', align: 'center', dataIndex: 'status', scopedSlots: { customRender: 'status' } }
+  { title: '使用人账号', align: 'center', sorter: true, dataIndex: 'letUser', width: '8%', scopedSlots: { customRender: 'user' } },
+  { title: '卡密状态', align: 'center', sorter: true, dataIndex: 'status', scopedSlots: { customRender: 'status' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     AddForm
   },

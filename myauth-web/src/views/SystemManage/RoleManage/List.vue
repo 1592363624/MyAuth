@@ -154,18 +154,20 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '角色名称', align: 'center', dataIndex: 'name', width: 40 },
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: 40, scopedSlots: { customRender: 'longText' } },
-  { title: '折扣(%)', align: 'center', dataIndex: 'discount', width: 40 },
-  { title: '拥有菜单权限列表', align: 'center', dataIndex: 'meunIds', width: 40, scopedSlots: { customRender: 'longText' } },
+  { title: '角色名称', align: 'center', sorter: true, dataIndex: 'name', width: 40 },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: 40, scopedSlots: { customRender: 'longText' } },
+  { title: '折扣(%)', align: 'center', sorter: true, dataIndex: 'discount', width: 40 },
+  { title: '拥有菜单权限列表', align: 'center', sorter: true, dataIndex: 'meunIds', width: 40, scopedSlots: { customRender: 'longText' } },
   // { title: '拥有菜单权限列表2', align:'center', dataIndex: 'meunList', width: 40, scopedSlots: { customRender: 'longText' } },
 
   { title: '操作', dataIndex: 'action', align: 'center', fixed: 'right', width: 100, scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

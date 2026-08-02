@@ -84,6 +84,17 @@
             autocomplete="off"
           />
         </a-form-model-item>
+        <a-form-model-item
+          label="描述"
+          prop="description"
+          extra="鼠标悬停时显示的提示信息"
+        >
+          <a-input
+            v-model="entity.description"
+            autocomplete="off"
+            placeholder="例如：管理用户授权卡密"
+          />
+        </a-form-model-item>
       </a-form-model>
     </a-spin>
   </a-modal>

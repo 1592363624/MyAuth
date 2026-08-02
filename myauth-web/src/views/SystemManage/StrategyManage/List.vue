@@ -48,6 +48,8 @@
               <a-input
                 v-model="queryParam.name"
                 placeholder="策略名称"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -59,6 +61,7 @@
               <a-select
                 v-model="queryParam.type"
                 placeholder="类型"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">期限</a-select-option>
                 <a-select-option :key="2">余额</a-select-option>
@@ -73,6 +76,8 @@
               <a-input
                 v-model="queryParam.value"
                 placeholder="面额"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -84,6 +89,8 @@
               <a-input
                 v-model="queryParam.price"
                 placeholder="价格"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -95,6 +102,7 @@
               <a-select
                 v-model="queryParam.status"
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">禁用</a-select-option>
@@ -211,20 +219,22 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '策略名称', align: 'center', dataIndex: 'name', width: 40 },
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: 40, scopedSlots: { customRender: 'longText' } },
-  { title: '类型', align: 'center', dataIndex: 'type', width: 40, scopedSlots: { customRender: 'type' } },
-  { title: '状态', align: 'center', dataIndex: 'status', width: 40, scopedSlots: { customRender: 'status' } },
-  { title: '面额', align: 'center', dataIndex: 'value', width: 40 },
-  { title: '价格', align: 'center', dataIndex: 'price', width: 40 },
-  { title: '排序', align: 'center', dataIndex: 'sort', width: 40 },
+  { title: '策略名称', align: 'center', sorter: true, dataIndex: 'name', width: 40 },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: 40, scopedSlots: { customRender: 'longText' } },
+  { title: '类型', align: 'center', sorter: true, dataIndex: 'type', width: 40, scopedSlots: { customRender: 'type' } },
+  { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: 40, scopedSlots: { customRender: 'status' } },
+  { title: '面额', align: 'center', sorter: true, dataIndex: 'value', width: 40 },
+  { title: '价格', align: 'center', sorter: true, dataIndex: 'price', width: 40 },
+  { title: '排序', align: 'center', sorter: true, dataIndex: 'sort', width: 40 },
 
   { title: '操作', dataIndex: 'action', align: 'center', fixed: 'right', width: 100, scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

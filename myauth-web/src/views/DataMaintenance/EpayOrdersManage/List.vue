@@ -248,21 +248,23 @@
 </template>
 
 <script>
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '支付平台订单号', align: 'center', dataIndex: 'tradeNo', width: '8%' },
-  { title: '商户订单号', align: 'center', dataIndex: 'outTradeNo', width: '8%' },
+  { title: '支付平台订单号', align: 'center', sorter: true, dataIndex: 'tradeNo', width: '8%' },
+  { title: '商户订单号', align: 'center', sorter: true, dataIndex: 'outTradeNo', width: '8%' },
   { title: '商品名称', align: 'center', sorter: true, dataIndex: 'name', width: '8%' },
-  { title: '支付类型', align: 'center', dataIndex: 'type', width: '8%' },
+  { title: '支付类型', align: 'center', sorter: true, dataIndex: 'type', width: '8%' },
   { title: '创建订单时间', align: 'center', sorter: true, dataIndex: 'addtime', width: '8%' },
   { title: '完成交易时间', align: 'center', sorter: true, dataIndex: 'endtime', width: '8%' },
   { title: '商品金额', align: 'center', sorter: true, dataIndex: 'money', width: '8%' },
   { title: '支付状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
-  { title: '创建订单管理员Id', align: 'center', dataIndex: 'fromAdminId', width: '8%' },
+  { title: '创建订单管理员Id', align: 'center', sorter: true, dataIndex: 'fromAdminId', width: '8%' },
   { title: '操作', dataIndex: 'action', align: 'center', width: '250px', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   mounted () {
     this.getDataList()
   },

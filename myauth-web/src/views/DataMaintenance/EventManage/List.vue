@@ -48,6 +48,8 @@
               <a-input
                 v-model="queryParam.name"
                 placeholder="事件名称"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -59,6 +61,8 @@
               <a-input
                 v-model="queryParam.addTime"
                 placeholder="添加时间戳"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -71,6 +75,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">禁用</a-select-option>
@@ -163,22 +168,24 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '事件名称', align: 'center', dataIndex: 'name', width: '8%' },
-  { title: '点数变动值', align: 'center', dataIndex: 'point', width: '7%' },
-  { title: '秒数变动值', align: 'center', dataIndex: 'seconds', width: '7%' },
-  { title: '每日限制次数', align: 'center', dataIndex: 'dayCount', width: '7%' },
-  { title: '总共限制次数', align: 'center', dataIndex: 'allCount', width: '7%' },
-  { title: '允许触发日期(开始)', align: 'center', dataIndex: 'startTime', width: '13%', scopedSlots: { customRender: 'time' } },
-  { title: '允许触发日期(结束)', align: 'center', dataIndex: 'endTime', width: '13%', scopedSlots: { customRender: 'time' } },
-  { title: '添加时间', align: 'center', dataIndex: 'addTime', width: '13%', scopedSlots: { customRender: 'time' } },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '事件名称', align: 'center', sorter: true, dataIndex: 'name', width: '8%' },
+  { title: '点数变动值', align: 'center', sorter: true, dataIndex: 'point', width: '7%' },
+  { title: '秒数变动值', align: 'center', sorter: true, dataIndex: 'seconds', width: '7%' },
+  { title: '每日限制次数', align: 'center', sorter: true, dataIndex: 'dayCount', width: '7%' },
+  { title: '总共限制次数', align: 'center', sorter: true, dataIndex: 'allCount', width: '7%' },
+  { title: '允许触发日期(开始)', align: 'center', sorter: true, dataIndex: 'startTime', width: '13%', scopedSlots: { customRender: 'time' } },
+  { title: '允许触发日期(结束)', align: 'center', sorter: true, dataIndex: 'endTime', width: '13%', scopedSlots: { customRender: 'time' } },
+  { title: '添加时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '13%', scopedSlots: { customRender: 'time' } },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '7%', scopedSlots: { customRender: 'status' } },
   { title: '操作', dataIndex: 'action', align: 'center', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

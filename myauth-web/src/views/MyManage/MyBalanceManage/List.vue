@@ -31,6 +31,8 @@
               <a-input
                 v-model="queryParam.money"
                 placeholder="变动余额"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -42,6 +44,8 @@
               <a-input
                 v-model="queryParam.afterMoney"
                 placeholder="变动后的余额"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -53,6 +57,8 @@
               <a-input
                 v-model="queryParam.data"
                 placeholder="变动描述"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -64,6 +70,7 @@
               <a-select
                 v-model="queryParam.type"
                 placeholder="变动类型"
+                @change="debounceSearch"
               >
                 <a-select-option key="管理员奖惩">管理员奖惩</a-select-option>
                 <a-select-option key="生成卡密">生成卡密</a-select-option>
@@ -245,16 +252,18 @@
 
 <script>
 import PayForm from '@/views/MyManage/MyBalanceManage/PayForm'
+import { listMixin } from '@/utils/listMixin'
 const columns = [
-  { title: '类型', align: 'center', dataIndex: 'type', width: '8%' },
-  { title: '变动时间', align: 'center', dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '变动余额', align: 'center', dataIndex: 'money', width: '8%' },
-  { title: '变动后的余额', align: 'center', dataIndex: 'afterMoney', width: '8%' },
-  { title: '变动账号ID', align: 'center', dataIndex: 'adminId', width: '8%' },
-  { title: '描述信息', align: 'center', dataIndex: 'data' }
+  { title: '类型', align: 'center', sorter: true, dataIndex: 'type', width: '8%' },
+  { title: '变动时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
+  { title: '变动余额', align: 'center', sorter: true, dataIndex: 'money', width: '8%' },
+  { title: '变动后的余额', align: 'center', sorter: true, dataIndex: 'afterMoney', width: '8%' },
+  { title: '变动账号ID', align: 'center', sorter: true, dataIndex: 'adminId', width: '8%' },
+  { title: '描述信息', align: 'center', sorter: true, dataIndex: 'data' }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     PayForm
   },

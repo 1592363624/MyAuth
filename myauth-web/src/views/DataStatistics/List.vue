@@ -261,21 +261,23 @@
 <script>
 // import Chart from './Chart.vue'
 import * as echarts from 'echarts'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '软件名', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '类型', align: 'center', dataIndex: 'type', width: '8%' },
-  { title: '内容', align: 'center', dataIndex: 'content', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '次数', align: 'center', dataIndex: 'count', width: '8%' }
+  { title: '软件名', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '类型', align: 'center', sorter: true, dataIndex: 'type', width: '8%' },
+  { title: '内容', align: 'center', sorter: true, dataIndex: 'content', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '次数', align: 'center', sorter: true, dataIndex: 'count', width: '8%' }
 ]
 
 const columns2 = [
-  { title: '软件名', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '设备信息', align: 'center', dataIndex: 'deviceInfo', width: '8%' },
-  { title: '数量', align: 'center', dataIndex: 'count', width: '8%' }
+  { title: '软件名', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '设备信息', align: 'center', sorter: true, dataIndex: 'deviceInfo', width: '8%' },
+  { title: '数量', align: 'center', sorter: true, dataIndex: 'count', width: '8%' }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     // Chart
   },

@@ -66,6 +66,8 @@
               <a-input
                 v-model="queryParam.keyword"
                 placeholder="关键词"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -78,6 +80,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">停用</a-select-option>
@@ -171,17 +174,19 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '关键词', align: 'center', dataIndex: 'keyword', width: '8%' },
-  { title: '回复内容', align: 'center', dataIndex: 'msg', width: '15%', scopedSlots: { customRender: 'longText' } },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '关键词', align: 'center', sorter: true, dataIndex: 'keyword', width: '8%' },
+  { title: '回复内容', align: 'center', sorter: true, dataIndex: 'msg', width: '15%', scopedSlots: { customRender: 'longText' } },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
-  { title: '所属版本', align: 'center', dataIndex: 'fromVer', width: '8%', scopedSlots: { customRender: 'fromVer' } },
+  { title: '所属版本', align: 'center', sorter: true, dataIndex: 'fromVer', width: '8%', scopedSlots: { customRender: 'fromVer' } },
   { title: '操作', dataIndex: 'action', align: 'center', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

@@ -84,6 +84,8 @@
               <a-input
                 v-model="queryParam.fromUser"
                 placeholder="变动账号"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -95,6 +97,8 @@
               <a-input
                 v-model="queryParam.addTime"
                 placeholder="变动时间戳"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -108,6 +112,8 @@
                 <a-input
                   v-model="queryParam.point"
                   placeholder="变动点数"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -119,6 +125,8 @@
                 <a-input
                   placeholder="变动后点数"
                   v-model="queryParam.afterPoint"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -130,6 +138,8 @@
                 <a-input
                   v-model="queryParam.seconds"
                   placeholder="变动秒数"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -141,6 +151,8 @@
                 <a-input
                   v-model="queryParam.afterSeconds"
                   placeholder="变动后秒数"
+                  @change="debounceSearch"
+                  @pressEnter="getDataList"
                 />
               </a-form-model-item>
             </a-col>
@@ -252,22 +264,24 @@
 
 <script>
 // import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '所属版本', align: 'center', dataIndex: 'fromVer', width: '8%' },
-  { title: '所属事件', align: 'center', dataIndex: 'fromEventName', width: '8%' },
-  { title: '点数变动值', align: 'center', dataIndex: 'point', width: '8%' },
-  { title: '变动后点数', align: 'center', dataIndex: 'afterPoint', width: '8%' },
-  { title: '秒数变动值', align: 'center', dataIndex: 'seconds', width: '8%' },
-  { title: '变动后秒数', align: 'center', dataIndex: 'afterSeconds', width: '8%' },
-  { title: '变动账号', align: 'center', dataIndex: 'fromUser', width: '8%' },
-  { title: '变动时间', align: 'center', dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
-  { title: '备注', align: 'center', dataIndex: 'remark', width: '8%', scopedSlots: { customRender: 'longText' } }
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '所属版本', align: 'center', sorter: true, dataIndex: 'fromVer', width: '8%' },
+  { title: '所属事件', align: 'center', sorter: true, dataIndex: 'fromEventName', width: '8%' },
+  { title: '点数变动值', align: 'center', sorter: true, dataIndex: 'point', width: '8%' },
+  { title: '变动后点数', align: 'center', sorter: true, dataIndex: 'afterPoint', width: '8%' },
+  { title: '秒数变动值', align: 'center', sorter: true, dataIndex: 'seconds', width: '8%' },
+  { title: '变动后秒数', align: 'center', sorter: true, dataIndex: 'afterSeconds', width: '8%' },
+  { title: '变动账号', align: 'center', sorter: true, dataIndex: 'fromUser', width: '8%' },
+  { title: '变动时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'time' } },
+  { title: '备注', align: 'center', sorter: true, dataIndex: 'remark', width: '8%', scopedSlots: { customRender: 'longText' } }
   // { title: '操作', dataIndex: 'action', align:'center', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     // EditForm
   },

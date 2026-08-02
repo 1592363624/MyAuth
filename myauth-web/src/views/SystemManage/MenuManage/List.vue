@@ -91,19 +91,22 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '标题', align: 'left', dataIndex: 'title', width: 40 },
-  { title: '类型', align: 'center', dataIndex: 'type', width: '8%', scopedSlots: { customRender: 'type' } },
-  { title: '层级', align: 'center', dataIndex: 'level', width: 40 },
-  { title: '排序', align: 'center', dataIndex: 'sort', width: 40 },
-  { title: '图标', align: 'center', dataIndex: 'icon', width: 40, scopedSlots: { customRender: 'icon' } },
-  { title: '路由', align: 'center', dataIndex: 'path', width: 100 },
+  { title: '标题', align: 'left', sorter: true, dataIndex: 'title', width: 40 },
+  { title: '类型', align: 'center', sorter: true, dataIndex: 'type', width: '8%', scopedSlots: { customRender: 'type' } },
+  { title: '层级', align: 'center', sorter: true, dataIndex: 'level', width: 40 },
+  { title: '排序', align: 'center', sorter: true, dataIndex: 'sort', width: 40 },
+  { title: '图标', align: 'center', sorter: true, dataIndex: 'icon', width: 40, scopedSlots: { customRender: 'icon' } },
+  { title: '路由', align: 'center', sorter: true, dataIndex: 'path', width: 100 },
+  { title: '描述', align: 'center', sorter: true, dataIndex: 'description', width: 100, scopedSlots: { customRender: 'longText' } },
 
   { title: '操作', dataIndex: 'action', align: 'center', fixed: 'right', width: 100, scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

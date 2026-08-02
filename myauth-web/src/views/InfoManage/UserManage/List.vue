@@ -37,63 +37,63 @@
           </a-col>
           <a-col :md="2" :sm="24">
             <a-form-model-item>
-              <a-input v-model="queryParam.fromAdminId" placeholder="管理员ID" />
+              <a-input v-model="queryParam.fromAdminId" placeholder="管理员ID" @change="debounceSearch" @pressEnter="getDataList" />
             </a-form-model-item>
           </a-col>
           <a-col :md="2" :sm="24">
             <a-form-model-item>
-              <a-input v-model="queryParam.user" placeholder="账号" />
+              <a-input v-model="queryParam.user" placeholder="账号" @change="debounceSearch" @pressEnter="getDataList" />
             </a-form-model-item>
           </a-col>
           <a-col :md="2" :sm="24">
             <a-form-model-item>
-              <a-input v-model="queryParam.name" placeholder="昵称" />
+              <a-input v-model="queryParam.name" placeholder="昵称" @change="debounceSearch" @pressEnter="getDataList" />
             </a-form-model-item>
           </a-col>
           <a-col :md="2" :sm="24">
             <a-form-model-item>
-              <a-input v-model="queryParam.point" placeholder="点数" />
+              <a-input v-model="queryParam.point" placeholder="点数" @change="debounceSearch" @pressEnter="getDataList" />
             </a-form-model-item>
           </a-col>
           <div v-if="expansion">
             <a-col :md="2" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.qq" placeholder="QQ" />
+                <a-input v-model="queryParam.qq" placeholder="QQ" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
             <a-col :md="3" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.lastIp" placeholder="最后登录IP" />
+                <a-input v-model="queryParam.lastIp" placeholder="最后登录IP" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
             <a-col :md="3" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.lastTime" placeholder="最后登录时间戳" />
+                <a-input v-model="queryParam.lastTime" placeholder="最后登录时间戳" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
             <a-col :md="3" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.authTime" placeholder="授权到期时间戳" />
+                <a-input v-model="queryParam.authTime" placeholder="授权到期时间戳" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
             <a-col :md="3" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.deviceInfo" placeholder="最后登录的设备" />
+                <a-input v-model="queryParam.deviceInfo" placeholder="最后登录的设备" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
             <a-col :md="3" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.deviceCode" placeholder="最后登录的设备机器码" />
+                <a-input v-model="queryParam.deviceCode" placeholder="最后登录的设备机器码" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
             <a-col :md="3" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.ckey" placeholder="卡密" />
+                <a-input v-model="queryParam.ckey" placeholder="卡密" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
             <a-col :md="3" :sm="24">
               <a-form-model-item>
-                <a-input v-model="queryParam.remark" placeholder="备注" />
+                <a-input v-model="queryParam.remark" placeholder="备注" @change="debounceSearch" @pressEnter="getDataList" />
               </a-form-model-item>
             </a-col>
           </div>
@@ -169,6 +169,7 @@
 import EditForm from './EditForm'
 import UpdateUserAuthForm from './UpdateUserAuthForm'
 import UserOnlineInfoForm from './UserOnlineInfoForm'
+import { listMixin } from '@/utils/listMixin'
 const columns = [
   { title: '所属软件', align: 'center', fixed: 'left', sorter: true, dataIndex: 'fromSoftName', width: 100 },
   { title: '所属版本', align: 'center', fixed: 'left', sorter: true, dataIndex: 'fromVerName', width: 100 },
@@ -243,6 +244,7 @@ const columns = [
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm,
     UserOnlineInfoForm,

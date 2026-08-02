@@ -60,6 +60,8 @@
               <a-input
                 v-model="queryParam.jsFun"
                 placeholder="函数名称"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -71,6 +73,8 @@
               <a-input
                 v-model="queryParam.addTime"
                 placeholder="添加时间戳"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -83,6 +87,7 @@
                 v-model="queryParam.status"
                 allowClear
                 placeholder="状态"
+                @change="debounceSearch"
               >
                 <a-select-option :key="1">正常</a-select-option>
                 <a-select-option :key="0">停用</a-select-option>
@@ -97,6 +102,8 @@
               <a-input
                 v-model="queryParam.remark"
                 placeholder="备注"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -191,19 +198,21 @@
 <script>
 import EditForm from './EditForm'
 import RunJsTest from './RunJsTest.vue'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
   { title: '函数名称', align: 'center', sorter: true, dataIndex: 'jsFun', width: '8%' },
-  { title: '函数内容', align: 'center', dataIndex: 'jsContent', width: '10%', scopedSlots: { customRender: 'longText' } },
+  { title: '函数内容', align: 'center', sorter: true, dataIndex: 'jsContent', width: '10%', scopedSlots: { customRender: 'longText' } },
   { title: '更新时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '10%', scopedSlots: { customRender: 'time' } },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
-  { title: '备注', align: 'center', dataIndex: 'remark', width: '10%', scopedSlots: { customRender: 'longText' } },
+  { title: '备注', align: 'center', sorter: true, dataIndex: 'remark', width: '10%', scopedSlots: { customRender: 'longText' } },
 
   { title: '操作', dataIndex: 'action', align: 'center', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm,
     RunJsTest

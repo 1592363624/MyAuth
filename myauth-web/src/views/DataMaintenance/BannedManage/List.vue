@@ -55,6 +55,8 @@
               <a-input
                 v-model="queryParam.value"
                 placeholder="封禁对象"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -66,6 +68,8 @@
               <a-input
                 v-model="queryParam.addTime"
                 placeholder="封禁添加时间"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -77,6 +81,8 @@
               <a-input
                 v-model="queryParam.toTime"
                 placeholder="封禁到期时间戳"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -88,6 +94,8 @@
               <a-input
                 v-model="queryParam.why"
                 placeholder="why"
+                @change="debounceSearch"
+                @pressEnter="getDataList"
               />
             </a-form-model-item>
           </a-col>
@@ -198,18 +206,20 @@
 
 <script>
 import EditForm from './EditForm'
+import { listMixin } from '@/utils/listMixin'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
-  { title: '封禁对象', align: 'center', dataIndex: 'value', width: '8%' },
-  { title: '封禁原因', align: 'center', dataIndex: 'why', width: '8%' },
-  { title: '封禁添加时间', align: 'center', dataIndex: 'addTime', width: '15%', scopedSlots: { customRender: 'time' } },
-  { title: '封禁到期时间', align: 'center', dataIndex: 'toTime', width: '15%', scopedSlots: { customRender: 'time' } },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
+  { title: '封禁对象', align: 'center', sorter: true, dataIndex: 'value', width: '8%' },
+  { title: '封禁原因', align: 'center', sorter: true, dataIndex: 'why', width: '8%' },
+  { title: '封禁添加时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '15%', scopedSlots: { customRender: 'time' } },
+  { title: '封禁到期时间', align: 'center', sorter: true, dataIndex: 'toTime', width: '15%', scopedSlots: { customRender: 'time' } },
   { title: '封禁类型', align: 'center', sorter: true, dataIndex: 'type', width: '8%', scopedSlots: { customRender: 'type' } },
   { title: '操作', dataIndex: 'action', align: 'center', fixed: 'right', scopedSlots: { customRender: 'action' } }
 ]
 
 export default {
+  mixins: [listMixin],
   components: {
     EditForm
   },

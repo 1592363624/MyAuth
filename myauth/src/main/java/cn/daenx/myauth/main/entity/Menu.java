@@ -49,6 +49,11 @@ public class Menu extends Model {
     private String title;
     private String icon;
 
+    /**
+     * 菜单描述，用于前端tooltip提示
+     */
+    private String description;
+
     @TableField(exist = false)
     private List<Menu> children;
 

@@ -1,5 +1,6 @@
 import Menu from 'ant-design-vue/es/menu'
 import Icon from 'ant-design-vue/es/icon'
+import Tooltip from 'ant-design-vue/es/tooltip'
 
 const { Item, SubMenu } = Menu
 
@@ -113,11 +114,15 @@ export default {
         })
       }
 
+      const titleContent = menu.meta.description
+        ? <Tooltip title={menu.meta.description} placement="right"><span>{menu.meta.title}</span></Tooltip>
+        : <span>{menu.meta.title}</span>
+
       return (
         <Item {...{ key: menu.path }}>
           <tag {...{ props, attrs }}>
             {this.renderIcon(menu.meta.icon)}
-            <span>{menu.meta.title}</span>
+            {titleContent}
           </tag>
         </Item>
       )
