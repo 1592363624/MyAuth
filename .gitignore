@@ -31,9 +31,18 @@ dist-ssr/
 myauth-web/.env
 myauth-web/.env.preview
 
+# ---------- 真实本地配置（含敏感数据，禁止入库，仅保留 .example 模板） ----------
+# 本地开发时把真实数据库密码/邮箱授权码等写在下面两个文件，它们会被忽略、不提交；
+# 模板文件 config/application.example.yml 与 serverConfig.example.json 需入库，故显式放行。
+myauth/src/main/resources/config/application.yml
+myauth-web/public/serverConfig.json
+
 # ---------- 例外：以下以 . 开头的配置文件必须提交，强制放行 ----------
 !.editorconfig
 !.eslintrc.js
 !tests/unit/.eslintrc.js
 !.env.example
 !.gitignore
+# 强制提交配置模板文件（即使同名真实文件被忽略，模板仍需入库）
+!myauth/src/main/resources/config/application.example.yml
+!myauth-web/public/serverConfig.example.json

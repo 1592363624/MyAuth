@@ -1,0 +1,10 @@
+{
+  "publishRootUrl": "https://your-domain.com",
+  "localRootUrl": "http://localhost:8081",
+  "apiTimeout": 10000,
+  "projectName": "MyAuth",
+  "internetContentProvider": "你的备案号",
+  "copyright": "2022 - 2026 Server By Shell",
+  "slogan": "美好的事情即将发生",
+  "boardRefreshTime": 30000
+}

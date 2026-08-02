@@ -1,0 +1,140 @@
+# ============================================================
+# 生产环境外部配置模板（config/application.example.yml）
+# 说明：
+#   1. 本文件为示例模板，提交到仓库，供他人/CI 参考配置结构；
+#   2. 真实配置请勿提交，请放在 jar 所在目录的 config 子目录下
+#      （如 C:/wwwroot/myauth/config/application.yml），文件名即 application.yml（不带 -prod 后缀）；
+#      Spring Boot 会自动优先读取外部 config 目录配置，且重传 jar 不会覆盖它；
+#   3. 该文件作为主配置直接使用，不依赖 spring.profiles.active；
+#   4. 敏感值使用 ${ENV} 占位符，由部署环境（服务器环境变量 / CI Secrets）注入，
+#      未注入时回退到冒号后的本地默认值（仅用于本地开发，不含真实敏感信息）。
+# ============================================================
+
+# 测试环境
+server:
+  port: 8081
+  servlet:
+    context-path: /myauth
+
+# 日志输出路径，如果是linux，直接写log即可，如果是windows，那就写，例如：C:/wwwroot/myauth/log
+log-file-path: D:/1/MyAuth源码/log
+
+# mybatis-plus配置控制台打印完整带参数SQL语句
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+spring:
+  datasource:
+    # 数据库连接地址，格式：jdbc:mysql://<host>:<port>/<dbName>?serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYAUTH_DB_HOST:localhost:3306}/${MYAUTH_DB_NAME:myauthtest}?serverTimezone=Asia/Shanghai
+    # 数据库用户名
+    username: ${MYAUTH_DB_USER:myauthtest}
+    # 数据库密码
+    password: ${MYAUTH_DB_PASSWORD:myauthtest}
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      #2.连接池配置
+      #初始化连接池的连接数量 大小，最小，最大
+      initial-size: 5
+      min-idle: 5
+      max-active: 20
+      #配置获取连接等待超时的时间
+      max-wait: 60000
+      #配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+      time-between-eviction-runs-millis: 60000
+      # 配置一个连接在池中最小生存的时间，单位是毫秒
+      min-evictable-idle-time-millis: 30000
+      validation-query: SELECT 1 FROM DUAL
+      test-while-idle: true
+      test-on-borrow: true
+      test-on-return: false
+      # 是否缓存preparedStatement，也就是PSCache  官方建议MySQL下建议关闭   个人建议如果想用SQL防火墙 建议打开
+      pool-prepared-statements: false
+      max-pool-prepared-statement-per-connection-size: 20
+      # 配置监控统计拦截的filters，去掉后监控界面sql无法统计，'wall'用于防火墙
+      filter:
+        stat:
+          merge-sql: true
+          slow-sql-millis: 5000
+      #3.基础监控配置
+      web-stat-filter:
+        enabled: true
+        url-pattern: /*
+        #设置不统计哪些URL
+        exclusions: "*.js,*.gif,*.jpg,*.png,*.css,*.ico,/druid/*"
+        session-stat-enable: true
+        session-stat-max-count: 100
+      stat-view-servlet:
+        enabled: true
+        url-pattern: /druid/*
+        reset-enable: true
+        #设置监控页面的登录名和密码
+        login-username: admin
+        login-password: admin
+        allow: 127.0.0.1
+        #deny: 192.168.1.100
+  # redis配置
+  redis:
+    host: ${MYAUTH_REDIS_HOST:127.0.0.1}
+    port: ${MYAUTH_REDIS_PORT:6379}
+    password: ${MYAUTH_REDIS_PASSWORD:}
+    timeout: 2000
+    #数据源序号
+    database: ${MYAUTH_REDIS_DB:0}
+    ##集群环境打开下面注释，单机不需要打开
+    #cluster:
+    ##集群信息
+    #nodes: xxx.xxx.xxx.xxx:xxxx,xxx.xxx.xxx.xxx:xxxx,xxx.xxx.xxx.xxx:xxxx
+    ##默认值是5 一般当此值设置过大时，容易报：Too many Cluster redirections
+    #maxRedirects: 3
+    pool:
+      # 连接池最大连接数
+      max-active: 200
+      # 连接池最大阻塞等待时间（使用负值表示没有限制）
+      max-wait: -1
+      # 连接池中的最大空闲连接
+      max-idle: 10
+      # 连接池中的最小空闲连接
+      min-idle:
+
+  # 邮件服务器配置（方式1，SSL）
+  mail:
+    # 邮件服务地址
+    host: ${MYAUTH_MAIL_HOST:smtp.qq.com}
+    # 用户名
+    username: ${MYAUTH_MAIL_USER:xxxxxx@xxx.com}
+    # 密码（QQ邮箱为授权码，非登录密码）
+    password: ${MYAUTH_MAIL_PASSWORD:xxxxxxxx}
+    # 发件昵称
+    nickname: ${MYAUTH_MAIL_NICKNAME:MyAuth授权中心}
+    # 编码格式
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          socketFactory:
+            class: javax.net.ssl.SSLSocketFactory
+            # 端口
+            port: 465
+
+  # 邮件服务器配置（方式2，STARTTLS，默认关闭）
+#  mail:
+#    host: smtp.qq.com
+#    username: xxxxxx@xxx.com
+#    password: xxxxxxxx
+#    nickname: MyAuth授权中心
+#    port: 25
+#    default-encoding: UTF-8
+#    properties:
+#      mail:
+#        smtp:
+#          auth: true
+#          starttls:
+#            enable: true
+#            required: true
+
+# 加密token的秘钥，长度必须为16位，仅支持英文和数字，不支持特殊符号和中文，不能以0开始
+# 建议通过环境变量 MYAUTH_GEN_KEY 注入，避免硬编码
+genKey: ${MYAUTH_GEN_KEY:1234567890123456}

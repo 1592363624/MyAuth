@@ -40,8 +40,25 @@ Vue.directive('title', {
 
 function getServerConfig () {
   return new Promise((resolve, reject) => {
+    // 开发环境：直接使用 .env 中配置的本地调试地址，避免改动 serverConfig.json 的生产配置
+    if (process.env.NODE_ENV === 'development') {
+      const localConfig = {
+        publishRootUrl: process.env.VUE_APP_PublishRootUrl,
+        localRootUrl: process.env.VUE_APP_LocalRootUrl,
+        apiTimeout: process.env.VUE_APP_ApiTimeout,
+        projectName: process.env.VUE_APP_ProjectName,
+        internetContentProvider: process.env.VUE_APP_InternetContentProvider,
+        copyright: process.env.VUE_APP_Copyright,
+        slogan: process.env.VUE_APP_Slogan,
+        boardRefreshTime: process.env.VUE_APP_BoardRefreshTime
+      }
+      localStorage.setItem('serverConfig', JSON.stringify(localConfig))
+      resolve()
+      return
+    }
+    // 生产/预览环境：读取 serverConfig.json 中的生产配置（保持线上值不变）
     axios.get('./serverConfig.json').then(data => {
-      localStorage.setItem('serverConfig', JSON.stringify(data.data))// �����ݹҵ�����ʹ��
+      localStorage.setItem('serverConfig', JSON.stringify(data.data))
       resolve()
     }).catch(error => {
       console.log(error)

@@ -11,7 +11,7 @@ import lombok.experimental.Accessors;
 @Data
 @Accessors(chain = true)
 @TableName("ma_pay_orders")
-public class EpayOrders extends Model {
+public class EpayOrders extends Model<EpayOrders> {
     private static final long serialVersionUID = 1L;
     @TableId(value = "id", type = IdType.AUTO)
     private Integer id;

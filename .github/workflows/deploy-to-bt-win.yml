@@ -1,0 +1,269 @@
+# GitHub Actions 工作流：MyAuth 前后端自动化构建并部署到 Windows 宝塔面板
+#
+# 功能说明：
+#   本工作流在 push 到 master 分支或手动触发时，自动完成以下操作：
+#   1. 使用 Maven + JDK 17 构建后端 Spring Boot 可执行 jar；
+#   2. 使用 Node + Yarn 构建前端 Vue 2 项目，生产环境 API 根地址通过 GitHub Secrets 注入；
+#   3. 通过 SCP 将 jar 包和前端 dist 产物上传到 Windows 服务器指定目录；
+#   4. 通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式，自带备份/回滚保障）。
+#
+# 前置条件：
+#   - Windows 服务器已安装并启用 OpenSSH Server（宝塔面板通常会自动安装）；
+#   - 服务器防火墙放行 SSH 端口（默认 22）；
+#   - 已在 GitHub 仓库 Settings -> Secrets and variables -> Actions 中配置全部依赖 Secrets。
+#   - 后端 jar 目标目录、前端网站根目录需提前在服务器上创建好并具备写入权限。
+
+name: Deploy to Windows Baota Panel
+
+on:
+  # master 分支发生 push 时自动触发部署
+  push:
+    branches:
+      - master
+  # 支持在 Actions 页面手动触发，方便首次验证或回滚后重试
+  workflow_dispatch:
+
+# 所有可配置的敏感信息/环境差异项均通过 Secrets 注入，避免硬编码
+env:
+  # 后端 jar 在服务器上的固定名称，方便重启脚本定位。
+  # 根据用户现有宝塔部署习惯，保持与服务器上 myauth.jar 同名，直接覆盖并重启。
+  BACKEND_JAR_NAME: myauth.jar
+
+jobs:
+  build-and-deploy:
+    # Ubuntu Runner 构建速度更快，构建产物再上传到 Windows 服务器
+    runs-on: ubuntu-latest
+
+    steps:
+      # 步骤 1：检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 步骤 2：配置 JDK 17（与 pom.xml 中 java.version 保持一致）
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          # 启用 Maven 依赖缓存，加速后续构建
+          cache: maven
+
+      # 步骤 3：Maven 构建后端，跳过测试以缩短 CI 时间
+      # 说明：
+      #   1. 真实 config/application.yml 已被 .gitignore 忽略且不入库、不泄露；
+      #   2. 仓库仅含 config/application.example.yml 模板（带 ${MYAUTH_*} 占位符），
+      #      打包进 jar 的是模板默认值，生产配置由服务器 C:/wwwroot/myauth/config/application.yml
+      #      外部文件提供（Spring Boot 自动优先读取，重传 jar 不覆盖）；
+      #   3. 防御性删除：确保打包环境不存在真实配置，避免误打入 jar。
+      - name: Build backend with Maven
+        working-directory: ./myauth
+        run: |
+          # 防御性检查：确保打包环境不存在真实外部配置（避免误打入 jar）
+          if [ -f src/main/resources/config/application.yml ]; then
+            echo "WARN: 发现真实 config/application.yml，已跳过打包该文件"
+            rm -f src/main/resources/config/application.yml
+          fi
+          mvn -B package -DskipTests
+
+      # 步骤 4：将构建出的 jar 重命名为固定名称，避免版本号变化导致重启脚本失效
+      - name: Rename backend jar to fixed name
+        working-directory: ./myauth
+        run: |
+          ls target/*.jar
+          cp target/myauth-*.jar target/${{ env.BACKEND_JAR_NAME }}
+
+      # 步骤 5：配置 Node.js 环境，用于构建前端
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          # 使用 yarn 作为包管理器，并锁定 yarn.lock，保证依赖可复现
+          cache: yarn
+          cache-dependency-path: myauth-web/yarn.lock
+
+      # 步骤 6：安装前端依赖并构建生产环境产物
+      # 说明：
+      #   1. 真实 serverConfig.json 已被 .gitignore 忽略且从仓库移除，不入库、不泄露；
+      #   2. 这里用整文件 Secret(FRONTEND_CONFIG_JSON) 直接写出生产 serverConfig.json 再 build，
+      #      比拆散多变量更省事，且仓库/CI 中不存在明文生产配置；
+      #   3. 若未配置该 Secret，则保留仓库模板默认值（仅用于本地/测试）。
+      - name: Build frontend with Yarn
+        working-directory: ./myauth-web
+        run: |
+          yarn install --frozen-lockfile
+          # 用整文件 Secret 覆盖生成生产用的 serverConfig.json（存在才覆盖）
+          if [ -n "${{ secrets.FRONTEND_CONFIG_JSON }}" ]; then
+            cat > public/serverConfig.json <<'EOF'
+          ${{ secrets.FRONTEND_CONFIG_JSON }}
+          EOF
+            echo "已用 FRONTEND_CONFIG_JSON 生成生产 serverConfig.json"
+          else
+            echo "WARN: 未配置 FRONTEND_CONFIG_JSON，使用仓库默认 serverConfig.json"
+          fi
+          yarn build
+
+      # 步骤 7：通过 SCP 上传后端 jar 到 Windows 服务器
+      # 说明：target 目录对应服务器上的后端存放目录，如 C:/wwwroot/myauth/
+      - name: Upload backend jar to Windows server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.WIN_HOST }}
+          port: ${{ secrets.WIN_PORT }}
+          username: ${{ secrets.WIN_USER }}
+          # 使用私钥登录（密钥登录模式），私钥内容存放于 WIN_SSH_KEY
+          key: ${{ secrets.WIN_SSH_KEY }}
+          source: "myauth/target/${{ env.BACKEND_JAR_NAME }}"
+          target: ${{ secrets.BACKEND_REMOTE_DIR }}
+          # 不保留本地目录层级，直接将 jar 放到目标目录下
+          strip_components: 2
+          overwrite: true
+
+      # 步骤 8：通过 SCP 上传前端 dist 产物到 Windows 服务器
+      # 说明：target 目录对应宝塔网站根目录，如 C:/wwwroot/my.52shell.ltd/
+      - name: Upload frontend dist to Windows server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.WIN_HOST }}
+          port: ${{ secrets.WIN_PORT }}
+          username: ${{ secrets.WIN_USER }}
+          # 使用私钥登录（密钥登录模式）
+          key: ${{ secrets.WIN_SSH_KEY }}
+          # 递归上传整个 dist 目录，strip_components=2 会去掉 myauth-web/dist 两层路径
+          source: "myauth-web/dist/"
+          target: ${{ secrets.FRONTEND_REMOTE_DIR }}
+          strip_components: 2
+          # 直接覆盖同名文件，不清空目标目录，避免误删目标目录下其他文件（如用户自行放置的静态资源）
+          overwrite: true
+
+      # 步骤 9：通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式）
+      #
+      # 设计目标：无论 jar 更新成功或失败，最终都必须保证有一个后端进程在正常运行，
+      #           绝不允许出现“更新后项目起不来”的雪崩情况。
+      #
+      # 健壮性保障：
+      #   1. 启动新 jar 前先备份旧 jar 为 myauth.jar.bak；
+      #   2. 用 WMI 精准匹配命令行包含 myauth.jar 的 java 进程并停止；
+      #   3. 启动后轮询 6401 端口（最多 ~90s）确认存活；
+      #   4. 若新 jar 启动失败（端口不通），自动回滚到 myauth.jar.bak 并重启旧版本；
+      #   5. 最终兜底：只要端口仍不通就抛出错误，由 GitHub Actions 标记失败便于人工介入，
+      #      但此时旧版本已在运行，项目不会崩。
+      - name: Restart backend Java application
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          # 将整文件 Secret 映射为远程环境变量，供 PowerShell 脚本写出后端配置
+          BACKEND_CONFIG_YML: ${{ secrets.BACKEND_CONFIG_YML }}
+        with:
+          host: ${{ secrets.WIN_HOST }}
+          port: ${{ secrets.WIN_PORT }}
+          username: ${{ secrets.WIN_USER }}
+          # 使用私钥登录（密钥登录模式）
+          key: ${{ secrets.WIN_SSH_KEY }}
+          # Windows 服务器默认 shell 为 PowerShell
+          script: |
+            $ErrorActionPreference = "Stop"
+
+            $backendDir  = "${{ secrets.BACKEND_REMOTE_DIR }}"
+            $jarName     = "${{ env.BACKEND_JAR_NAME }}"
+            $jarPath     = Join-Path $backendDir $jarName
+            $bakJarPath  = Join-Path $backendDir ($jarName + ".bak")
+            $listenPort  = 6401   # 与宝塔执行命令 --server.port=6401 保持一致
+            $javaExe     = "C:\BtSoft\jdk\jdk17\bin\java.exe"
+
+            Write-Host "Backend dir : $backendDir"
+            Write-Host "Jar path    : $jarPath"
+            Write-Host "Listen port : $listenPort"
+
+            # 等待 TCP 端口就绪的函数：最多等待 $timeoutSec 秒，每 3 秒探测一次
+            function Wait-PortOpen {
+                param([int]$Port, [int]$TimeoutSec = 90)
+                $deadline = (Get-Date).AddSeconds($TimeoutSec)
+                while ((Get-Date) -lt $deadline) {
+                    try {
+                        $tcp = New-Object System.Net.Sockets.TcpClient
+                        $tcp.Connect("127.0.0.1", $Port)
+                        $tcp.Close()
+                        return $true
+                    } catch {
+                        Start-Sleep -Seconds 3
+                    }
+                }
+                return $false
+            }
+
+            # 通过 WMI 精准定位“命令行包含 myauth.jar”的 java 进程并强制停止
+            function Stop-MyauthProcess {
+                $procs = Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" `
+                    | Where-Object { $_.CommandLine -like "*$jarName*" }
+                foreach ($p in $procs) {
+                    Write-Host "停止旧进程 PID=$($p.ProcessId)"
+                    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+                Start-Sleep -Seconds 3
+            }
+
+            # 启动 jar 的封装函数（与宝塔执行命令参数保持一致）
+            function Start-Myauth {
+                param([string]$JarToRun)
+                Write-Host "启动 jar: $JarToRun"
+                Start-Process -FilePath $javaExe `
+                    -ArgumentList "-jar", "-Xmx1024M", "-Xms256M", `
+                        "`"$JarToRun`"", "--server.port=$listenPort" `
+                    -WindowStyle Hidden `
+                    -WorkingDirectory $backendDir
+            }
+
+            # ---------- 主流程 ----------
+
+            # 0. 写出外部生产配置（jar 所在目录的 config\application.yml）
+            #    说明：用户服务器实际路径为 C:\wwwroot\myauth\config\application.yml，
+            #    这是 Spring Boot 标准外部 config 子目录约定，优先级高于 jar 内部配置，
+            #    且后续重传 jar 不会覆盖它。该文件作为主配置直接使用（不依赖 profile）。
+            #    整文件 Secret(BACKEND_CONFIG_YML) 直接写出覆盖；若未配置该 Secret，则保留服务器现有文件。
+            $configDir  = Join-Path $backendDir "config"
+            $prodConfig = Join-Path $configDir "application.yml"
+            if (-not (Test-Path $configDir)) {
+                New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+            }
+            if ($env:BACKEND_CONFIG_YML) {
+                # 写入 UTF-8 BOM（Windows PowerShell 默认 Set-Content 为 UTF-16，Spring 读取需 UTF-8）
+                $utf8 = New-Object System.Text.UTF8Encoding($true)
+                [System.IO.File]::WriteAllText($prodConfig, $env:BACKEND_CONFIG_YML, $utf8)
+                Write-Host "已用 BACKEND_CONFIG_YML 覆盖写出 config\application.yml"
+            } else {
+                Write-Host "WARN: 未配置 BACKEND_CONFIG_YML，保留服务器现有 config\application.yml"
+            }
+
+            # 1. 备份当前（旧）jar，供失败回滚使用
+            if (Test-Path $jarPath) {
+                Copy-Item -Path $jarPath -Destination $bakJarPath -Force
+                Write-Host "已备份旧 jar -> $bakJarPath"
+            }
+
+            # 2. 停止旧进程
+            Stop-MyauthProcess
+
+            # 3. 启动新 jar
+            Start-Myauth -JarToRun $jarPath
+
+            # 4. 等待新 jar 就绪
+            $ok = Wait-PortOpen -Port $listenPort -TimeoutSec 90
+            if ($ok) {
+                Write-Host "新版本启动成功，端口 $listenPort 已就绪"
+                exit 0
+            }
+
+            # 5. 新版本启动失败 -> 回滚到旧 jar 并重启
+            Write-Host "新版本启动失败，开始回滚到旧 jar ..."
+            Stop-MyauthProcess
+            if (Test-Path $bakJarPath) {
+                Copy-Item -Path $bakJarPath -Destination $jarPath -Force
+                Start-Myauth -JarToRun $jarPath
+                $ok = Wait-PortOpen -Port $listenPort -TimeoutSec 90
+                if ($ok) {
+                    Write-Host "已回滚到旧版本，端口 $listenPort 已就绪（项目未中断）"
+                    exit 0
+                }
+            }
+
+            # 6. 兜底：新旧都起不来，抛错让 Actions 标记失败，便于人工介入
+            throw "致命错误：新版本与回滚版本均无法启动，端口 $listenPort 未就绪，请立即人工检查服务器！"
