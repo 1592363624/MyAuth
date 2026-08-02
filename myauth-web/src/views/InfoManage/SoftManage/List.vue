@@ -304,12 +304,12 @@ import EditForm from './EditForm'
 // import { mixin, mixinDevice } from '@/utils/mixin/'
 
 const columns = [
-  { title: '软件名称', align: 'center', dataIndex: 'name', width: '8%' },
-  { title: '软件skey', align: 'center', dataIndex: 'skey', width: '8%' },
+  { title: '软件名称', align: 'center', sorter: true, dataIndex: 'name', width: '8%' },
+  { title: '软件skey', align: 'center', sorter: true, dataIndex: 'skey', width: '8%' },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
   { title: '类型', align: 'center', sorter: true, dataIndex: 'type', width: '8%', scopedSlots: { customRender: 'type' } },
   { title: '添加时间', align: 'center', sorter: true, dataIndex: 'addTime', width: '8%', scopedSlots: { customRender: 'addTime' } },
-  { title: '数据加密秘钥', align: 'center', dataIndex: 'genKey', width: '7%' },
+  { title: '数据加密秘钥', align: 'center', sorter: true, dataIndex: 'genKey', width: '7%' },
   { title: '数据加密与否', align: 'center', sorter: true, dataIndex: 'genStatus', width: '8%', scopedSlots: { customRender: 'yesNo' } },
   { title: '是否绑定机器码', align: 'center', sorter: true, dataIndex: 'bindDeviceCode', width: '7%', scopedSlots: { customRender: 'yesNo' } },
   { title: '注册情况', align: 'center', sorter: true, dataIndex: 'register', width: '7%', scopedSlots: { customRender: 'register' } },

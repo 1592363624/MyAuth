@@ -206,13 +206,13 @@
 import EditForm from './EditForm'
 
 const columns = [
-  { title: '所属软件', align: 'center', dataIndex: 'fromSoftName', width: '8%' },
+  { title: '所属软件', align: 'center', sorter: true, dataIndex: 'fromSoftName', width: '8%' },
   { title: '版本号', align: 'center', sorter: true, dataIndex: 'ver', width: '8%' },
-  { title: '版本key', align: 'center', dataIndex: 'vkey', width: '15%' },
+  { title: '版本key', align: 'center', sorter: true, dataIndex: 'vkey', width: '15%' },
   { title: '更新时间', align: 'center', sorter: true, dataIndex: 'updTime', width: '10%', scopedSlots: { customRender: 'updTime' } },
   { title: '更新模式', align: 'center', sorter: true, dataIndex: 'updType', width: '8%', scopedSlots: { customRender: 'updType' } },
   { title: '状态', align: 'center', sorter: true, dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
-  { title: '更新日志', align: 'center', dataIndex: 'updLog', width: '20%', scopedSlots: { customRender: 'longText' } },
+  { title: '更新日志', align: 'center', sorter: true, dataIndex: 'updLog', width: '20%', scopedSlots: { customRender: 'longText' } },
   { title: '操作', dataIndex: 'action', align: 'center', scopedSlots: { customRender: 'action' } }
 ]
 

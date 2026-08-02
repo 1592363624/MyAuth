@@ -170,14 +170,14 @@ import EditForm from './EditForm'
 import UpdateUserAuthForm from './UpdateUserAuthForm'
 import UserOnlineInfoForm from './UserOnlineInfoForm'
 const columns = [
-  { title: '所属软件', align: 'center', fixed: 'left', dataIndex: 'fromSoftName', width: 100 },
-  { title: '所属版本', align: 'center', fixed: 'left', dataIndex: 'fromVerName', width: 100 },
+  { title: '所属软件', align: 'center', fixed: 'left', sorter: true, dataIndex: 'fromSoftName', width: 100 },
+  { title: '所属版本', align: 'center', fixed: 'left', sorter: true, dataIndex: 'fromVerName', width: 100 },
   { title: '管理员ID', align: 'center', sorter: true, dataIndex: 'fromAdminId', width: 100 },
-  { title: '用户', align: 'center', dataIndex: 'user', width: 100, scopedSlots: { customRender: 'longText' } },
-  { title: '昵称', align: 'center', dataIndex: 'name', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '密码', align: 'center', dataIndex: 'pass', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '用户', align: 'center', sorter: true, dataIndex: 'user', width: 100, scopedSlots: { customRender: 'longText' } },
+  { title: '昵称', align: 'center', sorter: true, dataIndex: 'name', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '密码', align: 'center', sorter: true, dataIndex: 'pass', width: '8%', scopedSlots: { customRender: 'longText' } },
   { title: '点数', align: 'center', sorter: true, dataIndex: 'point', width: '8%' },
-  { title: 'QQ', align: 'center', dataIndex: 'qq', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: 'QQ', align: 'center', sorter: true, dataIndex: 'qq', width: '8%', scopedSlots: { customRender: 'longText' } },
   {
     title: '注册时间',
     align: 'center',
@@ -205,15 +205,17 @@ const columns = [
   {
     title: '最后登录IP',
     align: 'center',
+    sorter: true,
     dataIndex: 'lastIp',
     width: '10%',
     scopedSlots: { customRender: 'longText' }
   },
-  { title: '最后登录设备信息', align: 'center', dataIndex: 'deviceInfo', width: '13%' },
-  { title: '最后登录设备机器码', align: 'center', dataIndex: 'deviceCode', width: '14%' },
+  { title: '最后登录设备信息', align: 'center', sorter: true, dataIndex: 'deviceInfo', width: '13%' },
+  { title: '最后登录设备机器码', align: 'center', sorter: true, dataIndex: 'deviceCode', width: '14%' },
   {
     title: '软件Key',
     align: 'center',
+    sorter: true,
     dataIndex: 'fromSoftKey',
     width: '8%',
     scopedSlots: { customRender: 'longText' }
@@ -221,14 +223,15 @@ const columns = [
   {
     title: '软件版本Key',
     align: 'center',
+    sorter: true,
     dataIndex: 'fromVerKey',
     width: '10%',
     scopedSlots: { customRender: 'longText' }
   },
-  { title: 'Token', align: 'center', dataIndex: 'token', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '卡密', align: 'center', dataIndex: 'ckey', width: '8%', scopedSlots: { customRender: 'longText' } },
-  { title: '在线状态', align: 'center', dataIndex: 'onlineType', width: '8%', scopedSlots: { customRender: 'online' } },
-  { title: '备注', align: 'center', dataIndex: 'remark', width: '10%', scopedSlots: { customRender: 'longText' } },
+  { title: 'Token', align: 'center', sorter: true, dataIndex: 'token', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '卡密', align: 'center', sorter: true, dataIndex: 'ckey', width: '8%', scopedSlots: { customRender: 'longText' } },
+  { title: '在线状态', align: 'center', sorter: true, dataIndex: 'onlineType', width: '8%', scopedSlots: { customRender: 'online' } },
+  { title: '备注', align: 'center', sorter: true, dataIndex: 'remark', width: '10%', scopedSlots: { customRender: 'longText' } },
   {
     title: '操作',
     dataIndex: 'action',
