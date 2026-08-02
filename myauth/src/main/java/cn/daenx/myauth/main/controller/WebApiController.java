@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import cn.daenx.myauth.main.entity.Config;
 import cn.daenx.myauth.main.service.*;
 import cn.daenx.myauth.util.CheckUtils;
@@ -14,8 +16,8 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 公开API，不需要任何鉴权
@@ -24,6 +26,7 @@ import javax.servlet.http.HttpServletRequest;
  */
 @Slf4j
 @RestController
+@Tag(name = "Web公开接口")
 @RequestMapping("/web")
 public class WebApiController {
     @Resource

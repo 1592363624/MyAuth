@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller.web;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import cn.daenx.myauth.base.annotation.AdminLogin;
 import cn.daenx.myauth.base.vo.MyPage;
 import cn.daenx.myauth.main.entity.Admin;
@@ -15,8 +17,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 
 /**
@@ -27,6 +29,7 @@ import java.math.BigDecimal;
  */
 @Slf4j
 @RestController
+@Tag(name = "易支付")
 @RequestMapping("/web")
 public class EpayController {
     @Resource

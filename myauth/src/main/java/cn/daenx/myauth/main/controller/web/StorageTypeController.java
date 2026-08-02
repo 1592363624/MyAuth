@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller.web;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import cn.daenx.myauth.base.annotation.AdminLogin;
 import cn.daenx.myauth.base.annotation.NoEncryptNoSign;
 import cn.daenx.myauth.base.vo.MyPage;
@@ -13,8 +15,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 前端web使用的API接口
@@ -23,6 +25,7 @@ import javax.servlet.http.HttpServletRequest;
  */
 @Slf4j
 @RestController
+@Tag(name = "存贮类型")
 @RequestMapping("/web")
 public class StorageTypeController {
     @Resource

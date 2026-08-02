@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import cn.daenx.myauth.base.annotation.*;
 import cn.daenx.myauth.main.entity.Storage;
 import cn.daenx.myauth.main.service.*;
@@ -19,8 +21,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 软件使用API接口
@@ -29,6 +31,7 @@ import javax.servlet.http.HttpServletRequest;
  */
 @Slf4j
 @RestController
+@Tag(name = "软件SDK")
 @RequestMapping("/soft")
 public class SoftApiController {
     @Resource

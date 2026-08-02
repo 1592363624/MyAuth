@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller.web;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 
 import cn.daenx.myauth.base.annotation.AdminLogin;
 import cn.daenx.myauth.main.service.IRoleService;
@@ -14,8 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 
 /**
@@ -27,6 +29,7 @@ import java.util.List;
  * @since 2022-03-09
  */
 @RestController
+@Tag(name = "角色管理")
 @RequestMapping("/web")
 public class RoleController {
     @Resource

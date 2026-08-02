@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller.web;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import cn.daenx.myauth.base.vo.CardExportVo;
 import cn.daenx.myauth.main.entity.Role;
 import cn.daenx.myauth.util.CheckUtils;
@@ -21,9 +23,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 
@@ -34,6 +36,7 @@ import java.util.List;
  */
 @Slf4j
 @RestController
+@Tag(name = "卡密管理")
 @RequestMapping("/web")
 public class CardController {
     @Resource

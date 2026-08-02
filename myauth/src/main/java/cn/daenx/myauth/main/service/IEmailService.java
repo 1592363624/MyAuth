@@ -1,7 +1,7 @@
 package cn.daenx.myauth.main.service;
 
-import javax.mail.MessagingException;
-import javax.mail.internet.AddressException;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.AddressException;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.Map;

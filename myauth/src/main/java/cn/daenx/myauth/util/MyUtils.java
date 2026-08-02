@@ -4,13 +4,12 @@ import cn.daenx.myauth.base.vo.Result;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.serializer.SerializerFeature;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.util.Base64Utils;
 import org.springframework.util.DigestUtils;
 
 import javax.script.Invocable;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
@@ -138,7 +137,7 @@ public class MyUtils {
      * @return
      */
     public static String base64Encode(String txt) {
-        return Base64Utils.encodeToString(txt.getBytes(StandardCharsets.UTF_8));
+        return Base64.getEncoder().encodeToString(txt.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -148,7 +147,7 @@ public class MyUtils {
      * @return
      */
     public static String base64Decode(String txt) {
-        return Base64Utils.decodeFromString(txt).toString();
+        return new String(Base64.getDecoder().decode(txt), StandardCharsets.UTF_8);
     }
 
     /**

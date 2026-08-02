@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 
 import cn.daenx.myauth.base.annotation.NoEncryptNoSign;
 import cn.daenx.myauth.base.vo.Result;
@@ -14,8 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 
 
 /**
@@ -25,6 +27,7 @@ import javax.servlet.http.HttpServletRequest;
  */
 @Slf4j
 @RestController
+@Tag(name = "开放API")
 @RequestMapping("/web")
 public class OpenApiController {
     @Resource

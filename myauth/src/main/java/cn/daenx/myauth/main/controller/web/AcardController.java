@@ -1,5 +1,7 @@
 package cn.daenx.myauth.main.controller.web;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 
 import cn.daenx.myauth.base.annotation.AdminLogin;
 import cn.daenx.myauth.base.vo.AcardExportVo;
@@ -21,9 +23,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 
@@ -36,6 +38,7 @@ import java.util.List;
  * @since 2022-03-16
  */
 @RestController
+@Tag(name = "激活码管理")
 @RequestMapping("/web")
 public class AcardController {
     @Resource

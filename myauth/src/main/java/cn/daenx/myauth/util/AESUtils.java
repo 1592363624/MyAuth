@@ -1,11 +1,11 @@
 package cn.daenx.myauth.util;
 
 import cn.daenx.myauth.base.exception.MyException;
-import org.apache.tomcat.util.codec.binary.Base64;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 /**
  * AES加解密工具
@@ -35,7 +35,7 @@ public class AESUtils {
             Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
             cipher.init(Cipher.ENCRYPT_MODE, skeySpec);
             byte[] encrypted = cipher.doFinal(sSrc.getBytes(StandardCharsets.UTF_8));
-            return new Base64().encodeToString(encrypted);
+            return Base64.getEncoder().encodeToString(encrypted);
         } catch (Exception ex) {
             throw new MyException("数据加密时发生异常");
         }
@@ -63,7 +63,7 @@ public class AESUtils {
             //算法/模式/补码方式
             Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
             cipher.init(Cipher.DECRYPT_MODE, skeySpec);
-            byte[] encrypted1 = new Base64().decode(sSrc);
+            byte[] encrypted1 = Base64.getDecoder().decode(sSrc);
             byte[] original = cipher.doFinal(encrypted1);
             String originalString = new String(original, StandardCharsets.UTF_8);
             return originalString;
