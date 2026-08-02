@@ -27,8 +27,9 @@ dist-ssr/
 *.local
 
 # ---------- 真实密钥/环境变量（仅忽略含真实值的文件） ----------
-# .env 含真实配置，必须忽略；模板文件需提交，故显式放行
-myauth-web/.env
+# myauth-web/.env 仅含构建期默认/占位值（项目名、版本号、localhost 地址、伪备案号），
+# 无真实敏感信息，且生产接口地址由运行时 serverConfig.json 覆盖，故需提交供 CI 构建使用。
+# .env.preview 仍可能含本地预览真实值，继续忽略。
 myauth-web/.env.preview
 
 # ---------- 真实本地配置（含敏感数据，禁止入库，仅保留 .example 模板） ----------
