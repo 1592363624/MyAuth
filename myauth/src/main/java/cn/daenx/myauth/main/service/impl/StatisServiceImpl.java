@@ -60,7 +60,7 @@ public class StatisServiceImpl implements StatisService {
         if (CheckUtils.isObjectEmpty(newSoft)) {
             return Result.error("获取失败，未找到软件");
         }
-        Set<String> scan = redisUtil.scan("user:" + newSoft.getId() + "*");
+        Set<String> scan = redisUtil.scan("user:" + newSoft.getId() + ":*");
         JSONObject retJson = new JSONObject(true);
         retJson.put("softName", newSoft.getName());
         retJson.put("onlineCount", scan.size());
@@ -105,7 +105,7 @@ public class StatisServiceImpl implements StatisService {
         if (CheckUtils.isObjectEmpty(newSoft)) {
             return Result.error("获取失败，未找到软件");
         }
-        Set<String> scan = redisUtil.scan("user:" + newSoft.getId() + "*");
+        Set<String> scan = redisUtil.scan("user:" + newSoft.getId() + ":*");
         JSONObject retJson = new JSONObject(true);
         retJson.put("softName", newSoft.getName());
         retJson.put("onlineCount", scan.size());
