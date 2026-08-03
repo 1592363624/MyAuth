@@ -188,6 +188,10 @@ export default {
       this.init()
       if (softId) {
         this.fromSoftId = softId
+        // 新增或编辑时，所属软件都默认带入当前选中的软件
+        this.$nextTick(() => {
+          this.entity.fromSoftId = softId
+        })
         // 修改
         if (vkey) {
           this.vkey = vkey
