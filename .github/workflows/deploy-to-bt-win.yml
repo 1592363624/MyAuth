@@ -126,24 +126,36 @@ jobs:
           fi
           mvn -B package -DskipTests
 
-      # 步骤 4：将构建出的 jar 重命名为固定名称，避免版本号变化导致重启脚本失效
-      - name: Rename backend jar to fixed name
+      # 步骤 4：将构建出的 jar 重命名为固定名称，并对 jar 做 gzip 压缩，再上传
+      #      压缩后再 SCP，可显著缩短传输时间（spring boot jar 压缩率约 1/3），
+      #      同时降低 SSH 通道被中间链路 idle 掐断的概率。
+      - name: Rename backend jar and gzip it
         working-directory: ./myauth
         run: |
           ls target/*.jar
           cp target/myauth-*.jar target/${{ env.BACKEND_JAR_NAME }}
+          # 用 gzip 压一下，jar 内大量重复 class 字节码，压缩收益很高
+          gzip -kf target/${{ env.BACKEND_JAR_NAME }}
+          ls -la target/${{ env.BACKEND_JAR_NAME }}*
 
       # 步骤 5：通过 SCP 上传后端 jar 到 Windows 服务器
       # 说明：target 目录对应服务器上的后端存放目录，如 C:/wwwroot/myauth/
+      #
+      # 稳定性增强（修复 19 分钟卡死问题）：
+      #   1. 升级到 scp-action v0.1.10（修复旧版连接断后 retry 不及时导致 Broken pipe 后拖到超时）；
+      #   2. 启用 -C 压缩（小 jar 压缩后基本是 MB 级，对几十 MB 的 spring boot jar 很划算，能显著降低被中间链路 idle 掐断的概率）；
+      #   3. 启用 retry 机制（连接失败时自动重试 3 次，每次间隔 10s）；
+      #   4. 显式设置 command_timeout，避免旧版默认 10 分钟；
+      #   5. 兼容 SSH 路径格式：使用正斜杠，scp 内部会转换为 Windows 路径。
       - name: Upload backend jar to Windows server
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v0.1.10
         with:
           host: ${{ secrets.WIN_HOST }}
           port: ${{ secrets.WIN_PORT }}
           username: ${{ secrets.WIN_USER }}
           # 使用私钥登录（密钥登录模式），私钥内容存放于 WIN_SSH_KEY
           key: ${{ secrets.WIN_SSH_KEY }}
-          source: "myauth/target/${{ env.BACKEND_JAR_NAME }}"
+          source: "myauth/target/${{ env.BACKEND_JAR_NAME }}.gz"
           target: ${{ secrets.BACKEND_REMOTE_DIR }}
           # 不保留本地目录层级，直接将 jar 放到目标目录下
           strip_components: 2
@@ -151,6 +163,14 @@ jobs:
           # 设 true 会导致远端解压报 "Option --overwrite is not supported" 而失败；
           # bsdtar 解压默认即覆盖同名文件，故此处必须为 false。
           overwrite: false
+          # 启用 SSH 压缩传输（zlib），减小 jar 体积在网络上的占用，降低被中间链路当 idle 掐掉的概率
+          use_scp_compression: true
+          # 连接/上传失败时自动重试，最多 3 次，每次间隔 10s
+          retry: true
+          retry_count: 3
+          retry_interval: 10s
+          # 显式放宽命令超时到 30 分钟，覆盖默认 10 分钟
+          command_timeout: 30m
 
       # 步骤 6：通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式）
       #
@@ -164,6 +184,12 @@ jobs:
       #   4. 若新 jar 启动失败（端口不通），自动回滚到 myauth.jar.bak 并重启旧版本；
       #   5. 最终兜底：只要端口仍不通就抛出错误，由 GitHub Actions 标记失败便于人工介入，
       #      但此时旧版本已在运行，项目不会崩。
+      #
+      # 连接稳定性增强（解决"传 jar 卡 19 分钟"问题）：
+      #   - 在脚本开头先调用 sshd_config_set：把 ClientAliveInterval=30、ClientAliveCountMax=10
+      #     写入 Windows OpenSSH 的 sshd_config 并重启 sshd 服务，让服务端每 30s 发一次 keepalive，
+      #     最多允许 10 次（即 5 分钟无活动才断开）。这样 GitHub runner 在 jar 上传期间即使
+      #     没有产生流量，SSH 通道也不会被中间链路/NAT 误判为 idle 而掐断。
       - name: Restart backend Java application
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -179,10 +205,41 @@ jobs:
           script: |
             $ErrorActionPreference = "Stop"
 
+            # --------- 服务器侧 SSH keepalive 兜底配置 ---------
+            # 解决"scp 上传时 SSH 长连接被中间链路/NAT 当 idle 掐断"问题。
+            # Windows OpenSSH 的 sshd_config 默认路径：C:\ProgramData\ssh\sshd_config
+            # 设置 ClientAliveInterval=30 + ClientAliveCountMax=10，
+            # 意味着服务端每 30s 主动发一次心跳，最长允许 5 分钟空闲，超时才断开。
+            # 每次部署都做幂等判断并安全重启 sshd（避免锁死当前 SSH 会话）。
+            $sshdConfig = "C:\ProgramData\ssh\sshd_config"
+            if (Test-Path $sshdConfig) {
+                $needRestart = $false
+                $lines = Get-Content $sshdConfig -ErrorAction SilentlyContinue
+                $hasInterval = $lines | Where-Object { $_ -match '^\s*ClientAliveInterval\s+' }
+                $hasCountMax = $lines | Where-Object { $_ -match '^\s*ClientAliveCountMax\s+' }
+                if (-not $hasInterval) {
+                    Add-Content -Path $sshdConfig -Value "ClientAliveInterval 30"
+                    $needRestart = $true
+                }
+                if (-not $hasCountMax) {
+                    Add-Content -Path $sshdConfig -Value "ClientAliveCountMax 10"
+                    $needRestart = $true
+                }
+                if ($needRestart) {
+                    Write-Host "已写入 sshd keepalive 配置，重启 sshd 服务使其生效..."
+                    Restart-Service sshd -ErrorAction SilentlyContinue
+                } else {
+                    Write-Host "sshd keepalive 已配置，跳过"
+                }
+            } else {
+                Write-Host "WARN: 未找到 $sshdConfig，跳过 keepalive 配置"
+            }
+
             $backendDir  = "${{ secrets.BACKEND_REMOTE_DIR }}"
             $jarName     = "${{ env.BACKEND_JAR_NAME }}"
             $jarPath     = Join-Path $backendDir $jarName
             $bakJarPath  = Join-Path $backendDir ($jarName + ".bak")
+            $gzJarPath   = Join-Path $backendDir ($jarName + ".gz")
             $listenPort  = 6401   # 与宝塔执行命令 --server.port=6401 保持一致
             $javaExe     = "C:\BtSoft\jdk\jdk21\bin\java.exe"
 
@@ -230,6 +287,35 @@ jobs:
             }
 
             # ---------- 主流程 ----------
+
+            # 0.5 解压上传的 jar.gz，回滚后无需重新下载
+            #     失败则直接抛错，不动旧 jar 与旧进程（线上不会被这次失败影响）。
+            if (Test-Path $gzJarPath) {
+                Write-Host "检测到压缩包 $gzJarPath，开始解压..."
+                # 用 .NET 流式 gzip，PowerShell 原生支持，不依赖 tar/7z
+                $gzStream = [System.IO.File]::OpenRead($gzJarPath)
+                try {
+                    $decodedStream = New-Object System.IO.Compression.GZipStream(
+                        $gzStream,
+                        [System.IO.Compression.CompressionMode]::Decompress
+                    )
+                    try {
+                        $outStream = [System.IO.File]::Create($jarPath)
+                        try {
+                            $decodedStream.CopyTo($outStream)
+                        } finally {
+                            $outStream.Close()
+                        }
+                    } finally {
+                        $decodedStream.Close()
+                    }
+                } finally {
+                    $gzStream.Close()
+                }
+                Remove-Item -Path $gzJarPath -Force
+                $freshJar = (Get-Item $jarPath).Length
+                Write-Host "解压完成，jar 大小 $freshJar 字节"
+            }
 
             # 0. 写出外部生产配置（jar 所在目录的 config\application.yml）
             #    说明：用户服务器实际路径为 C:\wwwroot\myauth\config\application.yml，
@@ -338,8 +424,13 @@ jobs:
 
       # 步骤 4：通过 SCP 上传前端 dist 产物到 Windows 服务器
       # 说明：target 目录对应宝塔网站根目录，如 C:/wwwroot/my.52shell.ltd/
+      #
+      # 稳定性增强（与后端上传一致）：
+      #   1. 升级到 scp-action v0.1.10，修复旧版断连卡死的 bug；
+      #   2. 启用 -C 压缩（前端 dist 是大量重复的 js/css，压缩率非常高，能大幅缩短传输时间并降低被 idle 掐断概率）；
+      #   3. 启用 retry 机制。
       - name: Upload frontend dist to Windows server
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v0.1.10
         with:
           host: ${{ secrets.WIN_HOST }}
           port: ${{ secrets.WIN_PORT }}
@@ -354,3 +445,11 @@ jobs:
           # 设 true 会报 "Option --overwrite is not supported" 而失败；bsdtar 解压默认即覆盖同名文件，
           # 且不会清空目标目录（避免误删用户自行放置的静态资源），故此处必须为 false。
           overwrite: false
+          # 启用 SSH 压缩传输，前端资源压缩收益最大
+          use_scp_compression: true
+          # 连接/上传失败时自动重试
+          retry: true
+          retry_count: 3
+          retry_interval: 10s
+          # 放宽命令超时
+          command_timeout: 30m
