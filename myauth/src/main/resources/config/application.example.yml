@@ -95,8 +95,8 @@ spring:
       max-wait: -1
       # 连接池中的最大空闲连接
       max-idle: 10
-      # 连接池中的最小空闲连接
-      min-idle:
+      # 连接池中的最小空闲连接（必须填数值，Spring Boot 3.x 空值无法绑定 int，会导致启动失败）
+      min-idle: 5
 
   # 邮件服务器配置（方式1，SSL）
   mail:
