@@ -7,8 +7,8 @@
 #      Backend-only change   -> build the jar, upload it, then restart the Java process.
 #      Both changed          -> both deploy jobs run in parallel.
 #   3. Backend deploy: Maven + JDK 21 builds the jar, gh CLI uploads it to a GitHub Release (CDN),
-#      then an SSH script on the server pulls the jar via curl and restarts (pull mode avoids slow
-#      cross-border push bandwidth; ships with backup/rollback).
+#      then a PowerShell script on the server pulls the jar via the CDN and restarts
+#      (pull mode avoids slow cross-border push bandwidth; ships with backup/rollback).
 #   4. Frontend deploy: Node + Yarn builds dist, packages it into a tar.gz, uploads it to a GitHub
 #      Release, then the server downloads and extracts it over the website root.
 #
@@ -19,15 +19,38 @@
 #     deploy = force deploy this side
 #     skip   = force skip this side (even if there are changes)
 #
+# ---------------------------------------------------------------------------
+# IMPORTANT - why the deploy logic lives in separate .ps1 files (2026-08-15):
+#   The Windows server OpenSSH default shell is cmd.exe, NOT PowerShell. The
+#   appleboy/ssh-action plugin sends its "script" text verbatim to the server's
+#   default shell, so inline PowerShell syntax (e.g. "$dir = ...") failed with
+#   "'$dir' is not recognized as an internal or external command". The plugin
+#   also injects environment variables as bash-style "export" lines, which are
+#   invalid in cmd.exe, and cmd.exe limits a command line to 8191 characters.
+#
+#   Therefore this workflow:
+#     a. builds the long PowerShell deploy logic into deploy-backend.ps1 /
+#        deploy-frontend.ps1 on the Linux runner (pure ASCII English, no secrets);
+#     b. uploads ONLY these tiny files (a few KB) plus the optional config via
+#        native scp (OpenSSH SFTP subsystem is shell-independent and fast for
+#        small files - the slow cross-border scp was only a problem for the big
+#        66MB jar, which now travels via the GitHub Release CDN);
+#     c. runs a single plain cmd.exe-compatible bootstrap line that just launches
+#        powershell.exe -File <uploaded script>, so it works regardless of the
+#        server default shell.
+#   The large artifacts (myauth.jar, dist.tar.gz) are pulled by the server from
+#   the GitHub Release, matching the "build on GitHub, pull from Release" goal.
+# ---------------------------------------------------------------------------
+#
 # Prerequisites:
 #   - Windows server has OpenSSH Server installed and enabled (Baota usually installs it).
 #   - The server firewall allows the SSH port (default 22).
 #   - All required secrets are configured under Settings -> Secrets and variables -> Actions.
-#   - The backend jar target dir and the frontend website root dir must already exist on the
-#     server and be writable.
+#   - The backend jar target dir must exist on the server and be writable; the frontend
+#     website root dir must exist and be writable.
 #
 # NOTE: All comments and script strings in this file are kept pure ASCII English on purpose,
-# so that the PowerShell scripts survive SSH transfer to a Chinese-locale Windows server
+# so that the generated .ps1 files survive transfer to a Chinese-locale Windows server
 # without encoding corruption (garbled Chinese previously broke the scripts).
 
 name: Deploy to Windows Baota Panel
@@ -212,10 +235,14 @@ jobs:
           mark "[$(ts)] Upload finished, total $(( $(date +%s) - START_TIME ))s"
           exit 0
 
-      # Step 6: restart the backend Java process over SSH (process mode)
+      # Step 6: generate deploy-backend.ps1 - the full PowerShell deploy logic for the server.
       #
-      # Goal: whether the jar update succeeds or fails, a backend process must always keep
-      # running; a "project is down after update" avalanche is never acceptable.
+      # Why a separate .ps1 file instead of an inline ssh-action script:
+      #   - The server default shell is cmd.exe, so inline PowerShell syntax fails there.
+      #   - A .ps1 executed via "powershell.exe -File" avoids both the wrong-shell problem
+      #     and the cmd.exe 8191-character command line limit.
+      #   - The script contains NO secrets (paths/repo/url are baked in as non-secret values),
+      #     so it is safe to keep on the server.
       #
       # Robustness guarantees:
       #   1. Back up the old jar as myauth.jar.bak before starting the new jar;
@@ -224,271 +251,305 @@ jobs:
       #   4. If the new jar fails to start (port not open), automatically roll back to
       #      myauth.jar.bak and restart the old version;
       #   5. Final fallback: throw an error to mark the run as failed for human attention if the
-      #      port is still closed, but by then the old version is already running, so the project
-      #      does not crash.
-      #
-      # Connection stability (solves the "jar transfer stuck for 19 minutes" problem):
-      #   - At the start of the script, write ClientAliveInterval=30 and ClientAliveCountMax=10
-      #     into the Windows OpenSSH sshd_config and restart the sshd service, so the server sends
-      #     a keepalive every 30s and only drops the connection after 10 missed pings (5 minutes of
-      #     no activity). This stops middle links/NAT from killing the SSH channel as idle while the
-      #     runner is uploading the jar with no traffic.
-      - name: Restart backend Java application
-        uses: appleboy/ssh-action@v1.2.5
+      #      port is still closed, but by then the old version is already running.
+      #   6. At the start, write ClientAliveInterval=30 and ClientAliveCountMax=10 into the
+      #      Windows OpenSSH sshd_config and restart sshd, so the SSH channel is not killed as
+      #      idle while the server downloads the jar from the GitHub CDN.
+      - name: Generate backend deploy script (deploy-backend.ps1)
+        run: |
+          cat > deploy-backend.ps1 <<'PS1EOF'
+          # deploy-backend.ps1 - MyAuth backend deploy script (runs on the Windows server)
+          #
+          # Generated by GitHub Actions (deploy-to-bt-win.yml) and uploaded to the server.
+          # The workflow builds the jar, uploads it to a GitHub Release (CDN), then this
+          # script pulls the jar from the Release and restarts the Java process.
+          #
+          # Flow:
+          #   1. Apply idempotent sshd ClientAlive keepalive so the SSH channel survives the
+          #      long jar download (server -> GitHub CDN) without being killed as idle.
+          #   2. Move the uploaded config/application.yml into place (optional).
+          #   3. Download myauth.jar from the Release into myauth.jar.new (pull mode).
+          #   4. Back up the old jar, replace it, restart Java and poll port 6401.
+          #   5. Roll back to the old jar if the new one fails to start.
+          #
+          # NOTE: keep this file pure ASCII English; the server locale is Chinese (GBK) and
+          # non-ASCII bytes would be misread when the file is parsed without a BOM.
+
+          $ErrorActionPreference = "Stop"
+
+          # ---- baked-in parameters (injected by the workflow at generation time) ----
+          $backendDir = "${{ secrets.BACKEND_REMOTE_DIR }}"
+          $jarName    = "${{ env.BACKEND_JAR_NAME }}"
+          $listenPort = 6401   # keep in sync with the Baota command line --server.port=6401
+          $javaExe    = "C:\BtSoft\jdk\jdk21\bin\java.exe"
+          # Fixed GitHub Release download URL (public repo, anonymous access)
+          $releaseUrl = "https://github.com/${{ github.repository }}/releases/download/always-latest/$jarName"
+
+          $jarPath    = Join-Path $backendDir $jarName
+          $bakJarPath = Join-Path $backendDir ($jarName + ".bak")
+          $newJarPath = Join-Path $backendDir ($jarName + ".new")
+          $gzJarPath  = Join-Path $backendDir ($jarName + ".gz")
+
+          Write-Host "Release download URL: $releaseUrl"
+          Write-Host "Backend dir : $backendDir"
+          Write-Host "Jar path    : $jarPath"
+          Write-Host "Listen port : $listenPort"
+
+          # ---- 0. Idempotent sshd keepalive (write-only, NO service restart) ----
+          # Windows OpenSSH sshd_config default path: C:\ProgramData\ssh\sshd_config
+          # Setting ClientAliveInterval=30 + ClientAliveCountMax=10 helps FUTURE SSH
+          # connections survive idle periods while the server downloads the jar from the
+          # GitHub CDN.
+          # IMPORTANT: do NOT restart sshd here - on Windows OpenSSH, restarting the sshd
+          # service kills ALL active sessions, including the very session running this
+          # script, which would abort the deploy. The new keepalive takes effect on the
+          # next SSH connection automatically.
+          $sshdConfig = "C:\ProgramData\ssh\sshd_config"
+          if (Test-Path $sshdConfig) {
+              $lines = Get-Content $sshdConfig -ErrorAction SilentlyContinue
+              $hasInterval = $lines | Where-Object { $_ -match '^\s*ClientAliveInterval\s+' }
+              $hasCountMax = $lines | Where-Object { $_ -match '^\s*ClientAliveCountMax\s+' }
+              if (-not $hasInterval) {
+                  Add-Content -Path $sshdConfig -Value "ClientAliveInterval 30"
+              }
+              if (-not $hasCountMax) {
+                  Add-Content -Path $sshdConfig -Value "ClientAliveCountMax 10"
+              }
+              if ($hasInterval -and $hasCountMax) {
+                  Write-Host "sshd keepalive already configured, skipping"
+              } else {
+                  Write-Host "sshd keepalive config written (applies on next SSH connection; sshd NOT restarted to avoid killing this session)"
+              }
+          } else {
+              Write-Host "WARN: sshd_config not found at $sshdConfig, skipping keepalive config"
+          }
+
+          # ---- 0. Move the freshly uploaded config into place ----
+          # The workflow scp uploads application.yml to $backendDir; move it into config/.
+          # If the secret BACKEND_CONFIG_YML was empty the workflow skipped the upload, so
+          # the existing server config is kept untouched.
+          $incomingConfig = Join-Path $backendDir "application.yml"
+          $configDir  = Join-Path $backendDir "config"
+          $prodConfig = Join-Path $configDir "application.yml"
+          if (Test-Path $incomingConfig) {
+              if (-not (Test-Path $configDir)) {
+                  New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+              }
+              Move-Item -Path $incomingConfig -Destination $prodConfig -Force
+              Write-Host "config\application.yml updated from the uploaded file"
+          } else {
+              Write-Host "WARN: no uploaded application.yml, keeping the existing server config"
+          }
+
+          # ---- helpers ----
+          # Wait for a TCP port to open: probe every 3s up to TimeoutSec
+          function Wait-PortOpen {
+              param([int]$Port, [int]$TimeoutSec = 90)
+              $deadline = (Get-Date).AddSeconds($TimeoutSec)
+              while ((Get-Date) -lt $deadline) {
+                  try {
+                      $tcp = New-Object System.Net.Sockets.TcpClient
+                      $tcp.Connect("127.0.0.1", $Port)
+                      $tcp.Close()
+                      return $true
+                  } catch {
+                      Start-Sleep -Seconds 3
+                  }
+              }
+              return $false
+          }
+
+          # Locate the java process whose command line contains the jar name and force-stop it
+          function Stop-MyauthProcess {
+              $procs = Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" `
+                  | Where-Object { $_.CommandLine -like "*$jarName*" }
+              foreach ($p in $procs) {
+                  Write-Host "Stopping old process PID=$($p.ProcessId)"
+                  Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+              }
+              Start-Sleep -Seconds 3
+          }
+
+          # Start the jar with arguments identical to the Baota command line
+          function Start-Myauth {
+              param([string]$JarToRun)
+              Write-Host "Starting jar: $JarToRun"
+              Start-Process -FilePath $javaExe `
+                  -ArgumentList "-jar", "-Xmx1024M", "-Xms256M", `
+                      "`"$JarToRun`"", "--server.port=$listenPort" `
+                  -WindowStyle Hidden `
+                  -WorkingDirectory $backendDir
+          }
+
+          # ---- main flow ----
+
+          # 1. Download the latest jar from the GitHub Release to myauth.jar.new
+          #    Downloading to .new (not the official name) avoids a file-lock conflict with the
+          #    running java process. If the download fails (network/Release not ready) we keep the
+          #    old process untouched, so production is unaffected.
+          if (Test-Path $newJarPath) {
+              # Clear a leftover .new first to avoid stale-state misjudgment
+              Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host "Downloading from GitHub Release $releaseUrl ..."
+          # Invoke-WebRequest download; -UseBasicParsing avoids the IE engine overhead
+          try {
+              Invoke-WebRequest -Uri $releaseUrl -OutFile $newJarPath -UseBasicParsing -TimeoutSec 600
+              $dlSize = (Get-Item $newJarPath).Length
+              if ($dlSize -lt 10MB) {
+                  Write-Host "WARN: download result is only ${dlSize}B, likely incomplete; deleting and skipping replacement"
+                  Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
+              } else {
+                  Write-Host "Download OK, myauth.jar.new size $dlSize bytes"
+              }
+          } catch {
+              Write-Host "ERROR: failed to download from Release ($($_.Exception.Message))"
+              # Do not throw; let the flow keep the existing jar (effectively keeping the old
+              # version running), so an occasional download failure does not crash the deploy.
+          }
+
+          # 2. Clean stale intermediate files / quarantine broken jars
+          #    A normal jar is about 66.80MB; anything below 10MB is treated as broken.
+          if (Test-Path $gzJarPath) {
+              Write-Host "Found stale $gzJarPath, removing it (this flow no longer uses .gz) ..."
+              try {
+                  Remove-Item -Path $gzJarPath -Force -ErrorAction Stop
+                  Write-Host "Removed stale .jar.gz"
+              } catch {
+                  Write-Host "WARN: failed to remove stale .jar.gz ($($_.Exception.Message))"
+              }
+          }
+          if (Test-Path $jarPath) {
+              $existingJarSize = (Get-Item $jarPath).Length
+              if ($existingJarSize -lt 10MB) {
+                  Write-Host "WARN: existing $jarName is only ${existingJarSize}B, likely broken; renaming to .bak.broken for inspection"
+                  $brokenPath = Join-Path $backendDir ($jarName + ".bak.broken")
+                  try {
+                      Move-Item -Path $jarPath -Destination $brokenPath -Force
+                      Write-Host "Quarantined suspicious broken jar to $brokenPath"
+                  } catch {
+                      Write-Host "WARN: failed to quarantine broken jar ($($_.Exception.Message))"
+                  }
+              } else {
+                  Write-Host "Existing $jarName size $existingJarSize bytes, OK"
+              }
+          }
+
+          # 3. Back up the current (old) jar for rollback on failure
+          #    Note: the backup MUST happen before the (new) jar overwrites $jarPath; otherwise
+          #    the .bak would be the new jar and rollback would be meaningless.
+          if (Test-Path $jarPath) {
+              Copy-Item -Path $jarPath -Destination $bakJarPath -Force
+              Write-Host "Backed up old jar -> $bakJarPath"
+          } else {
+              Write-Host "WARN: $jarPath does not exist, no old jar to back up (first deploy, or the previous jar was quarantined as broken)"
+          }
+
+          # 4. Stop the old process (release the java lock on myauth.jar)
+          Stop-MyauthProcess
+
+          # 5. Replace the official jar with .new
+          #    .new was downloaded in step 1 from the GitHub Release. After the old process
+          #    stops, the jar lock is released and .new is atomically moved (renamed) to the
+          #    official myauth.jar. If .new is missing or too small, keep the old jar untouched.
+          if (Test-Path $newJarPath) {
+              $newSize = (Get-Item $newJarPath).Length
+              if ($newSize -lt 10MB) {
+                  Write-Host "WARN: $newJarPath is only ${newSize}B, likely a broken upload; not replacing this time, keeping the existing jar"
+                  Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
+              } else {
+                  Move-Item -Path $newJarPath -Destination $jarPath -Force
+                  Write-Host "Replaced the official jar with .new, current size $newSize bytes"
+              }
+          } else {
+              Write-Host "WARN: $newJarPath not found, skipping jar replacement"
+          }
+
+          # 6. Start the (possibly replaced) jar
+          Start-Myauth -JarToRun $jarPath
+
+          # 7. Wait for the new jar to be ready
+          $ok = Wait-PortOpen -Port $listenPort -TimeoutSec 90
+          if ($ok) {
+              Write-Host "New version started OK, port $listenPort is ready"
+              exit 0
+          }
+
+          # 8. New version failed to start -> roll back to the old jar and restart
+          Write-Host "New version failed to start, rolling back to the old jar ..."
+          Stop-MyauthProcess
+          if (Test-Path $bakJarPath) {
+              Copy-Item -Path $bakJarPath -Destination $jarPath -Force
+              Start-Myauth -JarToRun $jarPath
+              $ok = Wait-PortOpen -Port $listenPort -TimeoutSec 90
+              if ($ok) {
+                  Write-Host "Rolled back to the old version, port $listenPort is ready (service not interrupted)"
+                  exit 0
+              }
+          }
+
+          # 9. Final fallback: neither the new nor the rolled-back version started; throw to mark
+          #    the run as failed for human attention
+          throw "FATAL: neither the new nor the rolled-back version started, port $listenPort is not ready; check the server immediately!"
+          PS1EOF
+          ls -la deploy-backend.ps1
+
+      # Step 7: generate the production config (config/application.yml) from the whole-file secret.
+      # If the secret is empty, the file is not created and the existing server config is kept.
+      - name: Generate production config (application.yml) from secret
         env:
-          # Map the whole-file secret to a remote env var so the PowerShell script can write it
           BACKEND_CONFIG_YML: ${{ secrets.BACKEND_CONFIG_YML }}
-          # Repo name (owner/repo), used by the server script to build the Release download URL
-          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -n "$BACKEND_CONFIG_YML" ]; then
+            printf '%s\n' "$BACKEND_CONFIG_YML" > application.yml
+            echo "Generated application.yml from BACKEND_CONFIG_YML"
+          else
+            echo "WARN: BACKEND_CONFIG_YML is empty; server config will be kept as-is (no config upload)"
+          fi
+
+      # Step 8: upload the tiny deploy files (ps1 + optional config, a few KB) via native scp.
+      # Native scp uses the SFTP subsystem, which is shell-independent on Windows OpenSSH, so it
+      # works even though the server default shell is cmd.exe. Only small files go this way; the
+      # large jar travels via the GitHub Release CDN (see Step 5).
+      - name: Upload backend deploy files to server (scp, small files only)
+        env:
+          WIN_HOST: ${{ secrets.WIN_HOST }}
+          WIN_PORT: ${{ secrets.WIN_PORT }}
+          WIN_USER: ${{ secrets.WIN_USER }}
+          WIN_SSH_KEY: ${{ secrets.WIN_SSH_KEY }}
+          BACKEND_REMOTE_DIR: ${{ secrets.BACKEND_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          # Prepare the private key for the OpenSSH client
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$WIN_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          # Normalize the Windows target dir to forward slashes for scp
+          target="${BACKEND_REMOTE_DIR//\\//}/"
+          # Build the file list (config only exists when BACKEND_CONFIG_YML is set)
+          files="deploy-backend.ps1"
+          if [ -f application.yml ]; then
+            files="$files application.yml"
+          fi
+          scp -P "$WIN_PORT" -i "$HOME/.ssh/deploy_key" \
+              -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $files "$WIN_USER@$WIN_HOST:${target}"
+          echo "scp upload done -> ${target}"
+
+      # Step 9: run the backend deploy script on the server.
+      # The server OpenSSH default shell is cmd.exe, so this bootstrap is a single plain
+      # cmd.exe-compatible line that only launches the already-uploaded PowerShell script.
+      # It also works if the default shell were PowerShell, so it is robust either way.
+      - name: Run backend deploy script on server
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.WIN_HOST }}
           port: ${{ secrets.WIN_PORT }}
           username: ${{ secrets.WIN_USER }}
           # Private-key login (key auth mode)
           key: ${{ secrets.WIN_SSH_KEY }}
-          # Windows server default shell is PowerShell
           script: |
-            $ErrorActionPreference = "Stop"
-
-            # --------- Server-side SSH keepalive fallback config ---------
-            # Solves the "long SSH connection killed as idle by middle links/NAT during upload" issue.
-            # Windows OpenSSH sshd_config default path: C:\ProgramData\ssh\sshd_config
-            # Setting ClientAliveInterval=30 + ClientAliveCountMax=10 means the server sends a
-            # heartbeat every 30s and allows up to 5 minutes of inactivity before dropping the
-            # connection. Every deploy applies this idempotently and restarts sshd safely to avoid
-            # locking out the current SSH session.
-            $sshdConfig = "C:\ProgramData\ssh\sshd_config"
-            if (Test-Path $sshdConfig) {
-                $needRestart = $false
-                $lines = Get-Content $sshdConfig -ErrorAction SilentlyContinue
-                $hasInterval = $lines | Where-Object { $_ -match '^\s*ClientAliveInterval\s+' }
-                $hasCountMax = $lines | Where-Object { $_ -match '^\s*ClientAliveCountMax\s+' }
-                if (-not $hasInterval) {
-                    Add-Content -Path $sshdConfig -Value "ClientAliveInterval 30"
-                    $needRestart = $true
-                }
-                if (-not $hasCountMax) {
-                    Add-Content -Path $sshdConfig -Value "ClientAliveCountMax 10"
-                    $needRestart = $true
-                }
-                if ($needRestart) {
-                    Write-Host "sshd keepalive config written, restarting sshd service..."
-                    Restart-Service sshd -ErrorAction SilentlyContinue
-                } else {
-                    Write-Host "sshd keepalive already configured, skipping"
-                }
-            } else {
-                Write-Host "WARN: sshd_config not found at $sshdConfig, skipping keepalive config"
-            }
-
-            $backendDir  = "${{ secrets.BACKEND_REMOTE_DIR }}"
-            $jarName     = "${{ env.BACKEND_JAR_NAME }}"
-            $jarPath     = Join-Path $backendDir $jarName
-            $bakJarPath  = Join-Path $backendDir ($jarName + ".bak")
-            $newJarPath  = Join-Path $backendDir ($jarName + ".new")
-            $gzJarPath   = Join-Path $backendDir ($jarName + ".gz")
-            $listenPort  = 6401   # keep in sync with the Baota command line --server.port=6401
-            $javaExe     = "C:\BtSoft\jdk\jdk21\bin\java.exe"
-            # Fixed GitHub Release download URL: public repos allow anonymous access
-            # Format: https://github.com/<owner>/<repo>/releases/download/always-latest/myauth.jar
-            $releaseUrl  = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/always-latest/$jarName"
-            Write-Host "Release download URL: $releaseUrl"
-
-            Write-Host "Backend dir : $backendDir"
-            Write-Host "Jar path    : $jarPath"
-            Write-Host "Listen port : $listenPort"
-
-            # Wait for the TCP port to open: probe every 3 seconds, up to $TimeoutSec seconds
-            function Wait-PortOpen {
-                param([int]$Port, [int]$TimeoutSec = 90)
-                $deadline = (Get-Date).AddSeconds($TimeoutSec)
-                while ((Get-Date) -lt $deadline) {
-                    try {
-                        $tcp = New-Object System.Net.Sockets.TcpClient
-                        $tcp.Connect("127.0.0.1", $Port)
-                        $tcp.Close()
-                        return $true
-                    } catch {
-                        Start-Sleep -Seconds 3
-                    }
-                }
-                return $false
-            }
-
-            # Locate the java process whose command line contains myauth.jar via WMI, and force-stop it
-            function Stop-MyauthProcess {
-                $procs = Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" `
-                    | Where-Object { $_.CommandLine -like "*$jarName*" }
-                foreach ($p in $procs) {
-                    Write-Host "Stopping old process PID=$($p.ProcessId)"
-                    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
-                }
-                Start-Sleep -Seconds 3
-            }
-
-            # Wrapper to start the jar (arguments kept identical to the Baota command line)
-            function Start-Myauth {
-                param([string]$JarToRun)
-                Write-Host "Starting jar: $JarToRun"
-                Start-Process -FilePath $javaExe `
-                    -ArgumentList "-jar", "-Xmx1024M", "-Xms256M", `
-                        "`"$JarToRun`"", "--server.port=$listenPort" `
-                    -WindowStyle Hidden `
-                    -WorkingDirectory $backendDir
-            }
-
-            # ---------- Main flow ----------
-
-            # 0. Download the latest jar from GitHub Release to the temp file myauth.jar.new
-            #     Background (2026-08-15): the old scp scheme pushed the jar cross-border from the
-            #     GitHub runner to a China-based server, and the upload bandwidth was very slow (a
-            #     few KB/s). Now the runner uploads the jar to a GitHub Release (CDN) and the server
-            #     actively pulls it with curl (pull mode, usually far faster than scp push).
-            #     The public release is anonymously accessible, no auth needed.
-            #     Downloading to .new (not the official name) avoids a file-lock conflict with the
-            #     running java process. If the download fails (network/Release not ready) we keep the
-            #     old process untouched, so production is unaffected.
-            $downloadOk = $false
-            if (Test-Path $newJarPath) {
-                # Clear a leftover .new first to avoid stale-state misjudgment
-                Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
-            }
-            Write-Host "Downloading from GitHub Release $releaseUrl ..."
-            # Invoke-WebRequest download; -UseBasicParsing avoids the IE engine overhead
-            try {
-                Invoke-WebRequest -Uri $releaseUrl -OutFile $newJarPath -UseBasicParsing -TimeoutSec 600
-                $dlSize = (Get-Item $newJarPath).Length
-                if ($dlSize -lt 10MB) {
-                    Write-Host "WARN: download result is only ${dlSize}B, likely incomplete; deleting and skipping replacement"
-                    Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
-                } else {
-                    Write-Host "Download OK, myauth.jar.new size $dlSize bytes"
-                    $downloadOk = $true
-                }
-            } catch {
-                Write-Host "ERROR: failed to download from Release ($($_.Exception.Message))"
-                # Do not throw; let the flow keep the existing jar (effectively keeping the old
-                # version running), so an occasional download failure does not crash the deploy.
-            }
-
-            # 0. Defensive check: clean leftover broken jars / stale intermediate files
-            #     Background (2026-08-15): a previous interrupted transfer left a 6.72MB
-            #     myauth.jar.gz in $backendDir (the gzip header claimed 397.89MB but the disk file
-            #     was only 6.72MB). This flow now uploads the jar directly and no longer uses .gz,
-            #     but historical leftovers are still cleaned so they cannot interfere later.
-            #     Also validate the jar size: a normal jar is about 66.80MB; anything below 10MB is
-            #     treated as broken and quarantined.
-            if (Test-Path $gzJarPath) {
-                Write-Host "Found stale $gzJarPath, removing it (this flow no longer uses .gz) ..."
-                try {
-                    Remove-Item -Path $gzJarPath -Force -ErrorAction Stop
-                    Write-Host "Removed stale .jar.gz"
-                } catch {
-                    Write-Host "WARN: failed to remove stale .jar.gz ($($_.Exception.Message))"
-                }
-            }
-            if (Test-Path $jarPath) {
-                $existingJarSize = (Get-Item $jarPath).Length
-                # A normal jar is about 66.80MB; below 10MB it is clearly a broken upload.
-                # Quarantine instead of deleting so it can be inspected later.
-                if ($existingJarSize -lt 10MB) {
-                    Write-Host "WARN: existing $jarName is only ${existingJarSize}B, likely broken; renaming to .bak.broken for inspection"
-                    $brokenPath = Join-Path $backendDir ($jarName + ".bak.broken")
-                    try {
-                        Move-Item -Path $jarPath -Destination $brokenPath -Force
-                        Write-Host "Quarantined suspicious broken jar to $brokenPath"
-                    } catch {
-                        Write-Host "WARN: failed to quarantine broken jar ($($_.Exception.Message))"
-                    }
-                } else {
-                    Write-Host "Existing $jarName size $existingJarSize bytes, OK"
-                }
-            }
-
-            # 1. Back up the current (old) jar for rollback on failure
-            #    Note: the backup MUST happen before the (new) jar overwrites $jarPath; otherwise
-            #    the .bak would be the new jar and rollback would be meaningless.
-            #    If the earlier cleanup already quarantined a broken jar to .bak.broken (scenario:
-            #    the previous deploy was interrupted), then $jarPath does not exist and rollback
-            #    degrades to "no old version to roll back", only printing a notice without throwing.
-            if (Test-Path $jarPath) {
-                Copy-Item -Path $jarPath -Destination $bakJarPath -Force
-                Write-Host "Backed up old jar -> $bakJarPath"
-            } else {
-                Write-Host "WARN: $jarPath does not exist, no old jar to back up (first deploy, or the previous jar was quarantined as broken)"
-            }
-
-            # 2. Write the external production config (config\application.yml next to the jar)
-            #    Note: the server path is C:\wwwroot\myauth\config\application.yml, the standard
-            #    Spring Boot external config subdirectory convention, which takes priority over the
-            #    jar-internal config and survives jar re-uploads. It is used directly as the main
-            #    config (no profile). The whole-file Secret (BACKEND_CONFIG_YML) is written over it;
-            #    if the Secret is not configured, the existing server file is kept.
-            $configDir  = Join-Path $backendDir "config"
-            $prodConfig = Join-Path $configDir "application.yml"
-            if (-not (Test-Path $configDir)) {
-                New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-            }
-            if ($env:BACKEND_CONFIG_YML) {
-                # Write with a UTF-8 BOM (Windows PowerShell Set-Content defaults to UTF-16, but
-                # Spring needs UTF-8)
-                $utf8 = New-Object System.Text.UTF8Encoding($true)
-                [System.IO.File]::WriteAllText($prodConfig, $env:BACKEND_CONFIG_YML, $utf8)
-                Write-Host "config\application.yml overwritten from BACKEND_CONFIG_YML"
-            } else {
-                Write-Host "WARN: BACKEND_CONFIG_YML not set, keeping the existing server config\application.yml"
-            }
-
-            # 3. Stop the old process (release the java lock on myauth.jar)
-            Stop-MyauthProcess
-
-            # 3.5 Replace the official jar with .new
-            #     .new was downloaded by step 0 from GitHub Release (does not hold the official
-            #     name, not affected by the old process lock). After the old process stops, the jar
-            #     lock is released and .new is atomically moved (renamed) to the official myauth.jar.
-            #     If .new does not exist (download failed/Release not ready), keep the existing jar
-            #     untouched to avoid accidental deletion.
-            #     If .new exists but is too small (<10MB, clearly incomplete; normal is about
-            #     66.80MB), treat it as an incomplete download, do not replace, and keep the old jar.
-            if (Test-Path $newJarPath) {
-                $newSize = (Get-Item $newJarPath).Length
-                if ($newSize -lt 10MB) {
-                    Write-Host "WARN: $newJarPath is only ${newSize}B, likely a broken upload; not replacing this time, keeping the existing jar"
-                    Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
-                } else {
-                    Move-Item -Path $newJarPath -Destination $jarPath -Force
-                    Write-Host "Replaced the official jar with .new, current size $newSize bytes"
-                }
-            } else {
-                Write-Host "WARN: $newJarPath not found, skipping jar replacement (frontend-only deploy or upload did not happen)"
-            }
-
-            # 4. Start the new jar ($jarPath is now the replaced new jar)
-            Start-Myauth -JarToRun $jarPath
-
-            # 5. Wait for the new jar to be ready
-            $ok = Wait-PortOpen -Port $listenPort -TimeoutSec 90
-            if ($ok) {
-                Write-Host "New version started OK, port $listenPort is ready"
-                exit 0
-            }
-
-            # 6. New version failed to start -> roll back to the old jar and restart
-            Write-Host "New version failed to start, rolling back to the old jar ..."
-            Stop-MyauthProcess
-            if (Test-Path $bakJarPath) {
-                Copy-Item -Path $bakJarPath -Destination $jarPath -Force
-                Start-Myauth -JarToRun $jarPath
-                $ok = Wait-PortOpen -Port $listenPort -TimeoutSec 90
-                if ($ok) {
-                    Write-Host "Rolled back to the old version, port $listenPort is ready (service not interrupted)"
-                    exit 0
-                }
-            }
-
-            # 7. Final fallback: neither the new nor the rolled-back version started; throw to mark
-            #    the run as failed for human attention
-            throw "FATAL: neither the new nor the rolled-back version started, port $listenPort is not ready; check the server immediately!"
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${{ secrets.BACKEND_REMOTE_DIR }}\deploy-backend.ps1"
 
   # ============================================================
   # Job 2: frontend deploy (runs when the frontend changed, or manual deploy is forced)
@@ -593,46 +654,84 @@ jobs:
           rm -f dist.tar.gz
           mark "[$(ts)] Upload finished, total $(( $(date +%s) - START_TIME ))s"
 
-      # Step 4.5: SSH to the server, download the frontend dist from the Release and extract it
-      # Pull dist.tar.gz from the Release (public repo, anonymous access), extract it with the
-      # built-in Windows bsdtar, overwrite same-named files and do NOT clear the directory
-      # (identical to the old overwrite:false semantics, keeping user-placed static resources).
-      - name: Download and extract frontend dist on server
-        uses: appleboy/ssh-action@v1.2.5
+      # Step 5: generate deploy-frontend.ps1 - downloads dist.tar.gz from the Release and
+      # extracts it over the website root. Same reasoning as the backend .ps1: the server
+      # default shell is cmd.exe, so the PowerShell logic must run via powershell.exe -File.
+      # Pull mode (server -> GitHub CDN) avoids the slow cross-border scp upload.
+      - name: Generate frontend deploy script (deploy-frontend.ps1)
+        run: |
+          cat > deploy-frontend.ps1 <<'PS1EOF'
+          # deploy-frontend.ps1 - MyAuth frontend deploy script (runs on the Windows server)
+          #
+          # Generated by GitHub Actions (deploy-to-bt-win.yml) and uploaded to the server.
+          # Downloads dist.tar.gz from the GitHub Release and extracts it over the website
+          # root with the built-in Windows bsdtar. Overwrites same-named files and does NOT
+          # clear the directory, keeping static resources placed by the user.
+          #
+          # NOTE: keep this file pure ASCII English (see deploy-backend.ps1).
+
+          $ErrorActionPreference = "Stop"
+
+          # ---- baked-in parameters (injected by the workflow at generation time) ----
+          $webDir = "${{ secrets.FRONTEND_REMOTE_DIR }}"
+          $tgz = Join-Path $webDir "dist.tar.gz"
+          # Fixed GitHub Release download URL (public repo, anonymous access)
+          $releaseUrl = "https://github.com/${{ github.repository }}/releases/download/always-latest/dist.tar.gz"
+          Write-Host "Downloading from Release: $releaseUrl"
+          try {
+              Invoke-WebRequest -Uri $releaseUrl -OutFile $tgz -UseBasicParsing -TimeoutSec 600
+          } catch {
+              throw "Failed to download dist.tar.gz: $($_.Exception.Message)"
+          }
+          if (-not (Test-Path $tgz)) {
+              throw "dist.tar.gz not found at $tgz, frontend download failed"
+          }
+          $tgzSize = (Get-Item $tgz).Length
+          if ($tgzSize -lt 1MB) {
+              throw "dist.tar.gz is too small (${tgzSize}B), download incomplete"
+          }
+          Write-Host "Download OK, size $tgzSize bytes; extracting to $webDir ..."
+          # bsdtar extraction: -x extract, -z gzip, -f file;
+          # --strip-components 1 removes the outer dist/ directory from the archive so files land
+          # directly in the website root; overwrites same-named files and does NOT clear the dir
+          tar -xzf $tgz -C $webDir --strip-components 1
+          Remove-Item -Path $tgz -Force
+          Write-Host "Frontend extraction finished"
+          PS1EOF
+          ls -la deploy-frontend.ps1
+
+      # Step 6: upload the tiny deploy script (a few KB) via native scp.
+      # The script is placed in the backend deploy dir (shared deploy area), not in the public
+      # web root. Same reasoning as the backend scp step.
+      - name: Upload frontend deploy script to server (scp, small file)
         env:
-          FRONTEND_REMOTE_DIR: ${{ secrets.FRONTEND_REMOTE_DIR }}
-          # Repo name (owner/repo), used to build the GitHub Release download URL
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          WIN_HOST: ${{ secrets.WIN_HOST }}
+          WIN_PORT: ${{ secrets.WIN_PORT }}
+          WIN_USER: ${{ secrets.WIN_USER }}
+          WIN_SSH_KEY: ${{ secrets.WIN_SSH_KEY }}
+          BACKEND_REMOTE_DIR: ${{ secrets.BACKEND_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          # Prepare the private key for the OpenSSH client
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$WIN_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          # Normalize the Windows target dir to forward slashes for scp
+          target="${BACKEND_REMOTE_DIR//\\//}/"
+          scp -P "$WIN_PORT" -i "$HOME/.ssh/deploy_key" \
+              -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              deploy-frontend.ps1 "$WIN_USER@$WIN_HOST:${target}"
+          echo "scp upload done -> ${target}"
+
+      # Step 7: run the frontend deploy script on the server (cmd.exe-compatible bootstrap,
+      # same reasoning as the backend bootstrap).
+      - name: Run frontend deploy script on server
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.WIN_HOST }}
           port: ${{ secrets.WIN_PORT }}
           username: ${{ secrets.WIN_USER }}
           # Private-key login (key auth mode)
           key: ${{ secrets.WIN_SSH_KEY }}
-          # Windows server default shell is PowerShell
           script: |
-            $dir = "$env:FRONTEND_REMOTE_DIR"
-            $tgz = Join-Path $dir "dist.tar.gz"
-            # Fixed GitHub Release download URL (public repo, anonymous access)
-            $releaseUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/always-latest/dist.tar.gz"
-            Write-Host "Downloading from Release: $releaseUrl"
-            try {
-                Invoke-WebRequest -Uri $releaseUrl -OutFile $tgz -UseBasicParsing -TimeoutSec 600
-            } catch {
-                throw "Failed to download dist.tar.gz: $($_.Exception.Message)"
-            }
-            if (-not (Test-Path $tgz)) {
-              throw "dist.tar.gz not found at $tgz, frontend download failed"
-            }
-            $tgzSize = (Get-Item $tgz).Length
-            if ($tgzSize -lt 1MB) {
-              throw "dist.tar.gz is too small (${tgzSize}B), download incomplete"
-            }
-            Write-Host "Download OK, size $tgzSize bytes; extracting to $dir ..."
-            # bsdtar extraction: -x extract, -z gzip, -f file;
-            # --strip-components 1 removes the outer dist/ directory from the archive so files land
-            # directly in the website root; overwrites same-named files and does NOT clear the dir
-            # (same as the old overwrite:false semantics, keeping user static resources)
-            tar -xzf $tgz -C $dir --strip-components 1
-            Remove-Item -Path $tgz -Force
-            Write-Host "Frontend extraction finished"
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${{ secrets.BACKEND_REMOTE_DIR }}\deploy-frontend.ps1"
