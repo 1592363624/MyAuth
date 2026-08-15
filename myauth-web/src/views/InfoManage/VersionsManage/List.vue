@@ -22,6 +22,26 @@
         icon="redo"
         @click="getDataList()"
       >刷新</a-button>
+
+      <a-divider type="vertical" />
+
+      <!-- 批量状态操作：多选后统一启用或停用 -->
+      <a-button
+        type="success"
+        icon="check"
+        :disabled="selectedRowKeys.length===0"
+        @click="batchUpdVersionStatus(1)"
+      >批量启用</a-button>
+      <a-button
+        type="danger"
+        icon="stop"
+        :disabled="selectedRowKeys.length===0"
+        @click="batchUpdVersionStatus(0)"
+      >批量停用</a-button>
+      <span
+        style="margin-left:8px;color:#999"
+        v-if="selectedRowKeys.length>0"
+      >已选择 {{ selectedRowKeys.length }} 项</span>
     </div>
 
     <div class="table-page-search-wrapper">
@@ -43,6 +63,7 @@
                 <a-select-option
                   v-for="item in softListEx"
                   :key="item.id"
+                  :value="item.id"
                 >{{ item.name }}</a-select-option>
               </a-select>
             </a-form-model-item>
@@ -131,6 +152,7 @@
       :pagination="pagination"
       :loading="loading"
       :scroll="{x:2000}"
+      :rowSelection="{selectedRowKeys: selectedRowKeys, onChange: this.onSelectChange}"
       @change="handleTableChange"
       :bordered="true"
       size="small"
@@ -234,6 +256,8 @@ export default {
   data () {
     return {
       data: [],
+      // 批量操作选中的版本 id 集合
+      selectedRowKeys: [],
       pagination: {
         current: 1,
         pageSize: 10,
@@ -282,7 +306,50 @@ export default {
       this.getDataList()
     },
     softChange (value) {
-      if (value) { this.getDataList() }
+      if (value) {
+        // 记录当前选中的软件，使"新建"时默认带出该软件，同时仍可在弹窗内自由切换
+        this.softId = value
+        this.getDataList()
+      }
+    },
+    // 表格行多选事件：更新选中的版本 id 集合
+    onSelectChange (selectedRowKeys) {
+      this.selectedRowKeys = selectedRowKeys
+    },
+    // 批量修改版本状态：status 1=启用 0=停用
+    batchUpdVersionStatus (status) {
+      if (this.selectedRowKeys.length === 0) {
+        this.$message.warning('请先选择需要操作的版本')
+        return
+      }
+      const actionText = status === 1 ? '启用' : '停用'
+      const thisObj = this
+      this.$confirm({
+        title: `确认${actionText}选中的 ${this.selectedRowKeys.length} 个版本吗?`,
+        onOk () {
+          return new Promise((resolve, reject) => {
+            thisObj.submitBatchStatus(this.selectedRowKeys, status, resolve, reject)
+          }).catch(() => console.log('Oops errors!'))
+        }
+      })
+    },
+    submitBatchStatus (ids, status, resolve, reject) {
+      this.$http.post('/myauth/web/batchUpdVersionStatus', { ids, status }).then(resJson => {
+        resolve()
+        if (resJson.success) {
+          const result = resJson.result || {}
+          const success = result.success != null ? result.success : ids.length
+          const fail = result.fail != null ? result.fail : 0
+          if (fail > 0) {
+            this.$message.warning(`${resJson.msg}：成功 ${success} 条，失败 ${fail} 条`)
+          } else {
+            this.$message.success(`${resJson.msg}：成功 ${success} 条`)
+          }
+          this.getDataList()
+        } else {
+          this.$message.error(resJson.msg)
+        }
+      })
     },
     getDataList () {
       this.selectedRowKeys = []

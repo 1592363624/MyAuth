@@ -28,6 +28,7 @@
             <a-select-option
               v-for="item in softListEx"
               :key="item.id"
+              :value="item.id"
             >{{ item.name }}</a-select-option>
           </a-select>
         </a-form-model-item>

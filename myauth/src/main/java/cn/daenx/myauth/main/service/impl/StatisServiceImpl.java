@@ -143,6 +143,71 @@ public class StatisServiceImpl implements StatisService {
     }
 
     /**
+     * 获取全部软件统计数据（用于数据看板列表展示）
+     * 一次性查询全部软件的核心指标，避免前端在多个软件间逐一切换查看。
+     *
+     * @return
+     */
+    @Override
+    public Result getAllSoftStatisData() {
+        Integer now = Integer.valueOf(MyUtils.getTimeStamp());
+        // 1天/7天/30天时间阈值
+        Integer L1 = now - 1 * 24 * 60 * 60;
+        Integer L7 = now - 7 * 24 * 60 * 60;
+        Integer L30 = now - 30 * 24 * 60 * 60;
+
+        // 查询全部软件
+        LambdaQueryWrapper<Soft> softLambdaQueryWrapper = new LambdaQueryWrapper<>();
+        softLambdaQueryWrapper.orderByDesc(Soft::getId);
+        List<Soft> softList = softMapper.selectList(softLambdaQueryWrapper);
+
+        JSONArray array = new JSONArray();
+        for (Soft soft : softList) {
+            // 在线客户端数：通过 Redis 中该软件所有用户的 key 计数
+            Set<String> scan = redisUtil.scan("user:" + soft.getId() + ":*");
+            int onlineCount = scan == null ? 0 : scan.size();
+
+            // 总用户数
+            LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(User::getFromSoftId, soft.getId());
+            Long allCount = userMapper.selectCount(wrapper);
+
+            // 1天内新增
+            LambdaQueryWrapper<User> wrapperL1 = new LambdaQueryWrapper<>();
+            wrapperL1.eq(User::getFromSoftId, soft.getId());
+            wrapperL1.ge(User::getRegTime, L1);
+            Long L1C = userMapper.selectCount(wrapperL1);
+
+            // 7天内新增
+            LambdaQueryWrapper<User> wrapperL7 = new LambdaQueryWrapper<>();
+            wrapperL7.eq(User::getFromSoftId, soft.getId());
+            wrapperL7.ge(User::getRegTime, L7);
+            Long L7C = userMapper.selectCount(wrapperL7);
+
+            // 30天内新增
+            LambdaQueryWrapper<User> wrapperL30 = new LambdaQueryWrapper<>();
+            wrapperL30.eq(User::getFromSoftId, soft.getId());
+            wrapperL30.ge(User::getRegTime, L30);
+            Long L30C = userMapper.selectCount(wrapperL30);
+
+            JSONObject object = new JSONObject(true);
+            object.put("id", soft.getId());
+            object.put("softName", soft.getName());
+            object.put("onlineCount", onlineCount);
+            object.put("allCount", allCount);
+            object.put("nearly1", L1C);
+            object.put("nearly7", L7C);
+            object.put("nearly30", L30C);
+            array.add(object);
+        }
+
+        JSONObject retJson = new JSONObject(true);
+        retJson.put("list", array);
+        retJson.put("total", softList.size());
+        return Result.ok("获取成功", retJson);
+    }
+
+    /**
      * 获取数据排行
      *
      * @param soft

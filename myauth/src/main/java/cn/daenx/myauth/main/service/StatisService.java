@@ -38,6 +38,14 @@ public interface StatisService {
     Result getSoftStatisData(Soft soft);
 
     /**
+     * 获取全部软件统计数据（用于数据看板列表展示）
+     * 一次性返回所有软件的：软件名、在线客户端数、总用户数、1/7/30天内新增用户数
+     *
+     * @return
+     */
+    Result getAllSoftStatisData();
+
+    /**
      * 获取数据排行
      *
      * @param soft

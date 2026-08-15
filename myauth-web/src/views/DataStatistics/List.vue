@@ -12,72 +12,31 @@
         >刷新</a-button>
       </div>
 
+      <!-- 所有软件统计数据概览列表 -->
+      <a-card :bordered="true" style="margin-bottom:10px">
+        <div slot="title">所有软件数据概览</div>
+        <a-table
+          :columns="softStatisColumns"
+          :rowKey="row => row.id"
+          :dataSource="softStatisData"
+          :loading="softStatisLoading"
+          :pagination="false"
+          :bordered="true"
+          size="small"
+        >
+          <span
+            slot="softName"
+            slot-scope="text, record"
+          >
+            <a-tag color="#108ee9">{{ text }}</a-tag>
+            <span style="color:#999;margin-left:6px">ID:{{ record.id }}</span>
+          </span>
+        </a-table>
+      </a-card>
+
       <a-row :gutter="10">
         <a-col
-          :md="4"
-          :sm="24"
-        >
-          <a-card>
-            <div slot="title">软件信息： <a-select
-              v-model="queryParam.id"
-              allowClear
-              showSearch
-              :filterOption="filterOption"
-              placeholder="软件"
-              @change="softChange"
-              style="width:200px"
-            >
-              <a-select-option
-                v-for="item in softListEx"
-                :key="item.id"
-              >{{ item.name }}</a-select-option>
-            </a-select>
-            </div>
-            <a-form>
-              <a-form-item label="软件名">
-                <a-input
-                  v-model="entity.softName"
-                  disabled
-                />
-              </a-form-item>
-              <a-form-item label="在线客户端数">
-                <a-input
-                  v-model="entity.onlineCount"
-                  disabled
-                />
-              </a-form-item>
-              <a-form-item label="总用户数">
-                <a-input
-                  v-model="entity.allCount"
-                  disabled
-                />
-              </a-form-item>
-              <a-form-item label="1天内新增用户数">
-                <a-input
-                  v-model="entity.nearly1"
-                  disabled
-                />
-              </a-form-item>
-
-              <a-form-item label="7天内新增用户数">
-                <a-input
-                  v-model="entity.nearly7"
-                  disabled
-                />
-              </a-form-item>
-
-              <a-form-item label="30天内新增用户数">
-                <a-input
-                  v-model="entity.nearly30"
-                  disabled
-                />
-              </a-form-item>
-
-            </a-form>
-          </a-card>
-        </a-col>
-        <a-col
-          :md="10"
+          :md="12"
           :sm="24"
         >
           <a-table
@@ -131,7 +90,7 @@
           </a-table>
         </a-col>
         <a-col
-          :md="10"
+          :md="12"
           :sm="24"
         >
           <a-table
@@ -276,6 +235,16 @@ const columns2 = [
   { title: '数量', align: 'center', sorter: true, dataIndex: 'count', width: '8%' }
 ]
 
+// 所有软件统计数据概览的列定义
+const softStatisColumns = [
+  { title: '软件名', align: 'center', dataIndex: 'softName', width: '16%', scopedSlots: { customRender: 'softName' } },
+  { title: '在线客户端数', align: 'center', dataIndex: 'onlineCount', width: '14%' },
+  { title: '总用户数', align: 'center', dataIndex: 'allCount', width: '14%' },
+  { title: '1天内新增用户数', align: 'center', dataIndex: 'nearly1', width: '14%' },
+  { title: '7天内新增用户数', align: 'center', dataIndex: 'nearly7', width: '14%' },
+  { title: '30天内新增用户数', align: 'center', dataIndex: 'nearly30', width: '14%' }
+]
+
 export default {
   mixins: [listMixin],
   components: {
@@ -310,6 +279,9 @@ export default {
       entity: {},
       selectedRowKeys: [],
       selectedRowKeys2: [],
+      // 所有软件统计数据
+      softStatisData: [],
+      softStatisLoading: false,
       pagination: {
         current: 1,
         pageSize: 10,
@@ -333,6 +305,7 @@ export default {
       spinning4: true,
       columns,
       columns2,
+      softStatisColumns,
       queryParam: {},
       visible: false,
 
@@ -369,6 +342,7 @@ export default {
       this.getCardDistribution()
       this.getBanTypeCount()
       this.getDataList()
+      this.getAllSoftStatisData()
     },
     getFormatDate (nS) {
       return this.TimeHelper.getFormatDate(nS)
@@ -379,7 +353,7 @@ export default {
       this.sorter = { ...sorter.column ? sorter : this.sorter0 }
       this.getDataRanking()
     },
-     handleTableChange2 (pagination, filters, sorter) {
+    handleTableChange2 (pagination, filters, sorter) {
       this.pagination2 = { ...pagination }
       this.filters2 = { ...filters }
       this.sorter2 = { ...sorter }
@@ -400,8 +374,27 @@ export default {
       this.getDataRanking()
       this.getUserDeviceInfoRanking()
     },
+    // 获取所有软件统计数据，直接列表展示，无需逐个选择软件
+    getAllSoftStatisData () {
+      this.softStatisLoading = true
+      this.$http.post('/myauth/web/getAllSoftStatisData', {}).then(resJson => {
+        this.softStatisLoading = false
+        if (resJson.success) {
+          this.softStatisData = (resJson.result && resJson.result.list) ? resJson.result.list : []
+        } else {
+          this.$message.error(resJson.msg)
+          console.error(resJson)
+        }
+      }).catch(() => {
+        this.softStatisLoading = false
+      })
+    },
     getSoftStatisData () {
       this.entity = {}
+      // 若当前没有选中软件，则不请求单软件统计（列表概览已展示全部）
+      if (!this.queryParam.id) {
+        return
+      }
       this.$http.post('/myauth/web/getSoftStatisData', { id: this.queryParam.id }).then(resJson => {
         if (resJson.success) {
           this.entity = resJson.result
@@ -464,7 +457,7 @@ export default {
           if (resJson.success) {
             let result = []
             result = resJson.result
-             if (result.list && result.list.length) {
+            if (result.list && result.list.length) {
               this.data2 = result.list.map(this.setRowKey)
             }
             const pagination = { ...this.pagination2 }
@@ -480,8 +473,11 @@ export default {
         if (resJson.success) {
           this.softListEx = resJson.result
           if (resJson.result.length > 0) {
-            // this.softId = resJson.result[0].id
+            // 默认选中第一个软件，用于排行与统计
             this.queryParam.id = resJson.result[0].id
+            this.init()
+          } else {
+            // 无软件时也加载一次全局统计（无数据）
             this.init()
           }
         } else {

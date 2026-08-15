@@ -54,6 +54,20 @@ public class StatisController {
     }
 
     /**
+     * 获取全部软件统计数据（用于数据看板列表展示）
+     * 一次返回所有软件的核心指标，前端无需逐个选择软件查看
+     *
+     * @param request
+     * @return
+     */
+    @NoEncryptNoSign
+    @AdminLogin(is_super_role = false)
+    @PostMapping("/getAllSoftStatisData")
+    public Result getAllSoftStatisData(HttpServletRequest request) {
+        return statisService.getAllSoftStatisData();
+    }
+
+    /**
      * 获取数据排行
      *
      * @param request

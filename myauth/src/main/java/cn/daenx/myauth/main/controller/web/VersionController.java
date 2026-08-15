@@ -10,6 +10,7 @@ import cn.daenx.myauth.base.vo.Result;
 import cn.daenx.myauth.main.entity.Msg;
 import cn.daenx.myauth.base.vo.MyPage;
 import cn.daenx.myauth.main.entity.Version;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,6 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 前端web使用的API接口
@@ -147,6 +151,45 @@ public class VersionController {
             return Result.error("id不能为空");
         }
         return versionService.delVersion(version);
+    }
+
+    /**
+     * 批量修改版本状态（启用/停用）
+     * 前端传入 ids 数组（JSONArray）和目标 status 字段
+     *
+     * @param request
+     * @return
+     */
+    @NoEncryptNoSign
+    @AdminLogin
+    @PostMapping("batchUpdVersionStatus")
+    public Result batchUpdVersionStatus(HttpServletRequest request) {
+        JSONObject jsonObject = (JSONObject) request.getAttribute("json");
+        if (CheckUtils.isObjectEmpty(jsonObject)) {
+            return Result.error("参数错误");
+        }
+        Integer status = jsonObject.getInteger("status");
+        // 兼容两种传参：ids 直接是数组，或 ids 是 JSON 字符串
+        List<Integer> idList = new ArrayList<>();
+        JSONArray idsArray = jsonObject.getJSONArray("ids");
+        if (idsArray != null && !idsArray.isEmpty()) {
+            for (int i = 0; i < idsArray.size(); i++) {
+                Object item = idsArray.get(i);
+                if (item instanceof Number) {
+                    idList.add(((Number) item).intValue());
+                } else if (item != null) {
+                    try {
+                        idList.add(Integer.parseInt(item.toString()));
+                    } catch (NumberFormatException e) {
+                        log.warn("批量修改版本状态时存在非法 id：{}", item);
+                    }
+                }
+            }
+        }
+        if (idList.isEmpty()) {
+            return Result.error("请选择需要操作的版本");
+        }
+        return versionService.batchUpdVersionStatus(idList, status);
     }
 
     /**

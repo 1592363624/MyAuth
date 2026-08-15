@@ -7,6 +7,8 @@ import cn.daenx.myauth.main.entity.Soft;
 import cn.daenx.myauth.main.entity.Version;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+import java.util.List;
+
 /**
  * <p>
  * 服务类
@@ -89,6 +91,16 @@ public interface IVersionService extends IService<Version> {
      * @return
      */
     Result delVersion(Version version);
+
+    /**
+     * 批量修改版本状态（启用/停用）
+     * 用于版本管理列表中支持多选后统一切换状态
+     *
+     * @param ids    需要修改状态的版本 id 集合
+     * @param status 目标状态，0=停用，1=正常
+     * @return
+     */
+    Result batchUpdVersionStatus(List<Integer> ids, Integer status);
 
     /**
      * 获取版本列表_全部_简要

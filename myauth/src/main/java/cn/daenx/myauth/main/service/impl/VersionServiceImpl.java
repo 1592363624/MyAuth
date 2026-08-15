@@ -313,6 +313,51 @@ public class VersionServiceImpl extends ServiceImpl<VersionMapper, Version> impl
     }
 
     /**
+     * 批量修改版本状态（启用/停用）
+     * 同步更新数据库与 Redis 缓存，避免前端轮询期间读到旧状态
+     *
+     * @param ids    需要修改状态的版本 id 集合
+     * @param status 目标状态，0=停用，1=正常
+     * @return
+     */
+    @Override
+    public Result batchUpdVersionStatus(List<Integer> ids, Integer status) {
+        if (CheckUtils.isObjectEmpty(ids) || ids.isEmpty()) {
+            return Result.error("请选择需要操作的版本");
+        }
+        if (CheckUtils.isObjectEmpty(status)) {
+            return Result.error("状态参数不能为空");
+        }
+        if (status != 0 && status != 1) {
+            return Result.error("状态参数错误");
+        }
+        int success = 0;
+        int fail = 0;
+        for (Integer id : ids) {
+            // 仅更新 status 字段，避免覆盖其他字段
+            Version update = new Version();
+            update.setId(id);
+            update.setStatus(status);
+            int num = versionMapper.updateById(update);
+            if (num > 0) {
+                success++;
+                // 同步刷新 Redis 缓存，确保更新立即生效
+                Version newVersion = versionMapper.selectById(id);
+                if (!CheckUtils.isObjectEmpty(newVersion)) {
+                    redisUtil.set("version:" + newVersion.getVkey(), newVersion);
+                    redisUtil.set("id:version:" + newVersion.getId(), newVersion);
+                }
+            } else {
+                fail++;
+            }
+        }
+        JSONObject retJson = new JSONObject(true);
+        retJson.put("success", success);
+        retJson.put("fail", fail);
+        return Result.ok("批量操作完成", retJson);
+    }
+
+    /**
      * 获取版本列表_全部_简要
      *
      * @param versionC
