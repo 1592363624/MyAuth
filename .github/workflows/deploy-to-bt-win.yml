@@ -126,27 +126,28 @@ jobs:
           fi
           mvn -B package -DskipTests
 
-      # 步骤 4：将构建出的 jar 重命名为固定名称，并对 jar 做 gzip 压缩，再上传
-      #      压缩后再 SCP，可显著缩短传输时间（spring boot jar 压缩率约 1/3），
-      #      同时降低 SSH 通道被中间链路 idle 掐断的概率。
-      - name: Rename backend jar and gzip it
+      # 步骤 4：将构建出的 jar 重命名为固定名称，供 SCP 直传
+      #      说明：本 jar 实际大小约 66.80MB，完全在 scp 安全区（gzip 后也仅省 20-25MB），
+      #      且 gzip 会引入"gzip 头元数据失真/远端解压失败"一类风险（2026-08-15 实测踩过坑：
+      #      传输中断后残留 .jar.gz 头声明 397.89MB 但磁盘仅 6.72MB）。
+      #      因此这里不再 gzip，直接用 scp 传原 jar，靠 SSH -C 单层压缩即可。
+      - name: Rename backend jar
         working-directory: ./myauth
         run: |
           ls target/*.jar
           cp target/myauth-*.jar target/${{ env.BACKEND_JAR_NAME }}
-          # 用 gzip 压一下，jar 内大量重复 class 字节码，压缩收益很高
-          gzip -kf target/${{ env.BACKEND_JAR_NAME }}
-          ls -la target/${{ env.BACKEND_JAR_NAME }}*
+          ls -la target/${{ env.BACKEND_JAR_NAME }}
 
-      # 步骤 5：通过 scp 上传后端 jar（.jar.gz）到 Windows 服务器
+      # 步骤 5：通过 scp 上传后端 jar 到 Windows 服务器
       #
       # 说明：
       #   - 放弃 appleboy/scp-action（其 v0.1.7 在 SSH 断连后不会及时退出，会反复攒 progress
       #     样本拖到 command_timeout 才报错，正是本次卡 19 分钟的根因）。
       #   - 改用 GitHub ubuntu runner 自带的原生 scp 命令（openssh-client），配合：
-      #       1. -C 启用 SSH 压缩（jar 压缩后约 1/3，传输更快）；
-      #       2. 自动重试循环（最多 3 次，间隔 10s），断连后自动重新上传；
-      #       3. 私钥写入临时文件，ssh 指纹 StrictHostKeyChecking 默认自动接受；
+      #       1. -C 启用 SSH 压缩（单层压缩，66.80MB jar 传输等效约 20-25MB）；
+      #       2. -O 强制传统 scp 协议，规避 Windows OpenSSH sftp 子系统的偶发挂起；
+      #       3. 自动重试循环（最多 3 次，间隔 10s），断连后自动重新上传；
+      #       4. 私钥写入临时文件，ssh 指纹 StrictHostKeyChecking 自动接受；
       #   - 与远端 Windows OpenSSH 兼容：target 使用正斜杠格式 /C:/wwwroot/...，
       #     scp 服务端会正确解析为 C:\wwwroot\...。
       - name: Upload backend jar to Windows server
@@ -181,7 +182,7 @@ jobs:
               ;;
           esac
 
-          src="myauth/target/${{ env.BACKEND_JAR_NAME }}.gz"
+          src="myauth/target/${{ env.BACKEND_JAR_NAME }}"
           if [ ! -f "$src" ]; then
             mark "ERROR: 找不到源文件 $src"
             exit 1
@@ -208,7 +209,7 @@ jobs:
             mark "==== scp 上传尝试 #$attempt (累计 $(( $(date +%s) - START_TIME ))s) ===="
             mark "[$(ts)] 正在连接 ${WIN_HOST}:${WIN_PORT} ..."
             # -O 强制使用传统 scp 协议（非默认的 sftp 子系统）。
-            # Windows OpenSSH 的 sftp 服务端在传输较大文件（如本 jar 71MB）时
+            # Windows OpenSSH 的 sftp 服务端在传输较大文件（如本 jar 66.80MB）时
             # 偶发在"打开远程文件"阶段挂起（对应日志最后一行 debug1: pledge: fork 后无输出），
             # 传统 scp 协议处理大文件明显更稳，且能实时打印进度。
             if scp -O -v -C \
@@ -239,10 +240,6 @@ jobs:
             exit 1
           fi
           exit 0
-
-          if [ "$SUCCEEDED" -ne 1 ]; then
-            exit 1
-          fi
 
       # 步骤 6：通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式）
       #
@@ -360,24 +357,23 @@ jobs:
 
             # ---------- 主流程 ----------
 
-            # 0. 清理上次未完成的 scp 残缺上传（防御性）
-            #    背景：2026-08-15 实测两次推送都因 GitHub runner → Windows OpenSSH 的 sftp
-            #    通道在"打开远程文件"阶段挂起而失败，期间已在 $backendDir 下生成了不完整
-            #    的 myauth.jar.gz（例如 6.72 MB，远小于完整 jar）。如果不清它，下次解压
-            #    GZipStream 会抛 InvalidDataException，导致整个部署失败且回滚链也指向残缺文件。
-            #    这里用 try/finally 保证无论删除成败，主流程都继续往下走。
+            # 0. 防御性校验：清理遗留的残缺 jar / 残留中间文件
+            #    背景（2026-08-15）：曾因传输中断在 $backendDir 残留一个 6.72MB 的
+            #    myauth.jar.gz（gzip 头声明 397.89MB 但磁盘仅 6.72MB）。本流程已改为直传 jar，
+            #    不再使用 .gz，但仍清理历史残留，避免其干扰后续部署。
+            #    同时校验 jar 本体大小合理性：正常 jar 约 66.80MB，< 10MB 一律视为残缺并隔离。
             if (Test-Path $gzJarPath) {
-                Write-Host "发现已存在的 $gzJarPath，先清理（避免与新上传冲突） ..."
+                Write-Host "发现历史遗留 $gzJarPath，清理它（本流程已不再使用 .gz） ..."
                 try {
                     Remove-Item -Path $gzJarPath -Force -ErrorAction Stop
-                    Write-Host "已清理旧 .jar.gz"
+                    Write-Host "已清理遗留 .jar.gz"
                 } catch {
-                    Write-Host "WARN: 清理旧 .jar.gz 失败 ($($_.Exception.Message))，将尝试强制覆盖"
+                    Write-Host "WARN: 清理遗留 .jar.gz 失败 ($($_.Exception.Message))"
                 }
             }
-            # 校验 jar 本体大小（如果存在）的合理性，防止半成品 jar 残留
             if (Test-Path $jarPath) {
                 $existingJarSize = (Get-Item $jarPath).Length
+                # 正常 jar 约 66.80MB；< 10MB 明显是残缺上传物，隔离而非删除以便排查
                 if ($existingJarSize -lt 10MB) {
                     Write-Host "WARN: 现有 $jarName 大小仅 ${existingJarSize}B，过小疑似残缺，重命名为 .bak.broken 以备排查"
                     $brokenPath = Join-Path $backendDir ($jarName + ".bak.broken")
@@ -392,7 +388,19 @@ jobs:
                 }
             }
 
-            # 1. 写出外部生产配置（jar 所在目录的 config\application.yml）
+            # 1. 备份当前（旧）jar，供失败回滚使用
+            #    注意：必须在（新）jar 覆盖前备份，否则 $jarPath 已被新版本覆盖，
+            #    备份出来的 .bak 就会是新 jar，回滚将失去意义。
+            #    如果前面的清理步骤已经把残缺 jar 隔离到 .bak.broken（场景：上次部署意外中断），
+            #    此时 $jarPath 不存在，回滚降级为"无旧版本可回"，仅打印提示，不抛错。
+            if (Test-Path $jarPath) {
+                Copy-Item -Path $jarPath -Destination $bakJarPath -Force
+                Write-Host "已备份旧 jar -> $bakJarPath"
+            } else {
+                Write-Host "WARN: $jarPath 不存在，无旧 jar 可备份（可能为首次部署或上次的 jar 已被隔离为残缺）"
+            }
+
+            # 2. 写出外部生产配置（jar 所在目录的 config\application.yml）
             #    说明：用户服务器实际路径为 C:\wwwroot\myauth\config\application.yml，
             #    这是 Spring Boot 标准外部 config 子目录约定，优先级高于 jar 内部配置，
             #    且后续重传 jar 不会覆盖它。该文件作为主配置直接使用（不依赖 profile）。
@@ -411,62 +419,20 @@ jobs:
                 Write-Host "WARN: 未配置 BACKEND_CONFIG_YML，保留服务器现有 config\application.yml"
             }
 
-            # 1. 备份当前（旧）jar，供失败回滚使用
-            #    注意：必须在解压新 jar 之前备份，否则 $jarPath 已被新版本覆盖，
-            #    备份出来的 .bak 就会是新 jar，回滚将失去意义。
-            #    如果前面的清理步骤已经把残缺 jar 隔离到 .bak.broken（场景：上次部署意外中断），
-            #    此时 $jarPath 不存在，回滚降级为"无旧版本可回"，仅打印提示，不抛错。
-            if (Test-Path $jarPath) {
-                Copy-Item -Path $jarPath -Destination $bakJarPath -Force
-                Write-Host "已备份旧 jar -> $bakJarPath"
-            } else {
-                Write-Host "WARN: $jarPath 不存在，无旧 jar 可备份（可能为首次部署或上次的 jar 已被隔离为残缺）"
-            }
-
-            # 1.5 解压上传的 jar.gz，覆盖为新的 myauth.jar
-            #     解压失败则直接抛错，此时 $jarPath 仍是旧版本、旧进程未停，
-            #     线上不会被这次失败影响，回滚也不需要（旧 jar 还在）。
-            if (Test-Path $gzJarPath) {
-                Write-Host "检测到压缩包 $gzJarPath，开始解压..."
-                # 用 .NET 流式 gzip，PowerShell 原生支持，不依赖 tar/7z
-                $gzStream = [System.IO.File]::OpenRead($gzJarPath)
-                try {
-                    $decodedStream = New-Object System.IO.Compression.GZipStream(
-                        $gzStream,
-                        [System.IO.Compression.CompressionMode]::Decompress
-                    )
-                    try {
-                        $outStream = [System.IO.File]::Create($jarPath)
-                        try {
-                            $decodedStream.CopyTo($outStream)
-                        } finally {
-                            $outStream.Close()
-                        }
-                    } finally {
-                        $decodedStream.Close()
-                    }
-                } finally {
-                    $gzStream.Close()
-                }
-                Remove-Item -Path $gzJarPath -Force
-                $freshJar = (Get-Item $jarPath).Length
-                Write-Host "解压完成，jar 大小 $freshJar 字节"
-            }
-
-            # 2. 停止旧进程
+            # 3. 停止旧进程
             Stop-MyauthProcess
 
-            # 3. 启动新 jar
+            # 4. 启动新 jar（scp 已直传覆盖，此处直接使用 $jarPath 即可）
             Start-Myauth -JarToRun $jarPath
 
-            # 4. 等待新 jar 就绪
+            # 5. 等待新 jar 就绪
             $ok = Wait-PortOpen -Port $listenPort -TimeoutSec 90
             if ($ok) {
                 Write-Host "新版本启动成功，端口 $listenPort 已就绪"
                 exit 0
             }
 
-            # 5. 新版本启动失败 -> 回滚到旧 jar 并重启
+            # 6. 新版本启动失败 -> 回滚到旧 jar 并重启
             Write-Host "新版本启动失败，开始回滚到旧 jar ..."
             Stop-MyauthProcess
             if (Test-Path $bakJarPath) {
@@ -479,7 +445,7 @@ jobs:
                 }
             }
 
-            # 6. 兜底：新旧都起不来，抛错让 Actions 标记失败，便于人工介入
+            # 7. 兜底：新旧都起不来，抛错让 Actions 标记失败，便于人工介入
             throw "致命错误：新版本与回滚版本均无法启动，端口 $listenPort 未就绪，请立即人工检查服务器！"
 
   # ============================================================
