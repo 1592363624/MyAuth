@@ -6,8 +6,9 @@
 #   2. 只改了前端 -> 仅构建并上传前端 dist，不重启后端；
 #      只改了后端 -> 仅构建 jar、上传并重启 Java 进程；
 #      两端都改   -> 两个部署 Job 并行执行；
-#   3. 后端部署：Maven + JDK 21 构建 jar，SCP 上传，SSH 执行 PowerShell 脚本重启（自带备份/回滚）；
-#   4. 前端部署：Node + Yarn 构建 dist，生产 API 根地址通过 GitHub Secrets 注入，SCP 上传覆盖。
+#   3. 后端部署：Maven + JDK 21 构建 jar，用 gh CLI 上传到 GitHub Release（CDN），
+#      服务器 SSH 脚本主动 curl 下载再重启（拉取方式，规避跨境推带宽慢；自带备份/回滚）；
+#   4. 前端部署：Node + Yarn 构建 dist，打包成 tar.gz 上传到 GitHub Release，服务器下载解压覆盖。
 #
 # 手动触发（workflow_dispatch）：
 #   可通过 backend / frontend 两个下拉框强制控制：
@@ -50,6 +51,11 @@ on:
           - deploy
           - skip
         default: auto
+
+# GITHUB_TOKEN 权限：gh release create/upload 需要 contents 写权限。
+# （若不加，公开仓库默认 GITHUB_TOKEN 的 contents 为只读，gh release upload 会报 403）
+permissions:
+  contents: write
 
 # 所有可配置的敏感信息/环境差异项均通过 Secrets 注入，避免硬编码
 env:
@@ -126,11 +132,10 @@ jobs:
           fi
           mvn -B package -DskipTests
 
-      # 步骤 4：将构建出的 jar 重命名为固定名称，供 SCP 直传
-      #      说明：本 jar 实际大小约 66.80MB，完全在 scp 安全区（gzip 后也仅省 20-25MB），
-      #      且 gzip 会引入"gzip 头元数据失真/远端解压失败"一类风险（2026-08-15 实测踩过坑：
-      #      传输中断后残留 .jar.gz 头声明 397.89MB 但磁盘仅 6.72MB）。
-      #      因此这里不再 gzip，直接用 scp 传原 jar，靠 SSH -C 单层压缩即可。
+      # 步骤 4：将构建出的 jar 重命名为固定名称（myauth.jar），供 gh release 上传
+      #      说明：本 jar 实际大小约 66.80MB。不再 gzip（gzip 会引入"gzip 头元数据失真/
+      #      远端解压失败"一类风险，2026-08-15 实测踩过坑）。直接以原 jar 上传到 Release，
+      #      由 GitHub CDN 提供下载，服务器拉取。
       - name: Rename backend jar
         working-directory: ./myauth
         run: |
@@ -138,49 +143,29 @@ jobs:
           cp target/myauth-*.jar target/${{ env.BACKEND_JAR_NAME }}
           ls -la target/${{ env.BACKEND_JAR_NAME }}
 
-      # 步骤 5：通过 scp 上传后端 jar 到 Windows 服务器
+      # 步骤 5：通过 gh CLI 上传后端 jar 到 GitHub Release（固定 tag: always-latest）
       #
-      # 说明：
-      #   - 放弃 appleboy/scp-action（其 v0.1.7 在 SSH 断连后不会及时退出，会反复攒 progress
-      #     样本拖到 command_timeout 才报错，正是本次卡 19 分钟的根因）。
-      #   - 改用 GitHub ubuntu runner 自带的原生 scp 命令（openssh-client），配合：
-      #       1. -C 启用 SSH 压缩（单层压缩，66.80MB jar 传输等效约 20-25MB）；
-      #       2. -O 强制传统 scp 协议，规避 Windows OpenSSH sftp 子系统的偶发挂起；
-      #       3. 自动重试循环（最多 3 次，间隔 10s），断连后自动重新上传；
-      #       4. 私钥写入临时文件，ssh 指纹 StrictHostKeyChecking 自动接受；
-      #   - 与远端 Windows OpenSSH 兼容：target 使用正斜杠格式 /C:/wwwroot/...，
-      #     scp 服务端会正确解析为 C:\wwwroot\...。
-      - name: Upload backend jar to Windows server
+      # 说明（2026-08-15 从 scp 改为 Release 拉取）：
+      #   - 原方案：GitHub runner 用 scp 推 jar 到国内服务器，跨境上行带宽极慢（几 KB/s）。
+      #   - 现方案：runner 用 gh CLI 上传 jar 到 GitHub Release（CDN），服务器再 curl 下载。
+      #     下载走 GitHub CDN，通常远快于 runner->国内的上行带宽；且服务器是"拉"，比"推"更稳。
+      #   - 仓库为公开仓库，release 可匿名下载，服务器无需认证。
+      #   - 固定用 tag=always-latest 的 release，每次覆盖同名 asset（myauth.jar），服务器固定 URL。
+      #
+      # 关键点：
+      #   - GITHUB_TOKEN 由 Actions 自动注入，gh 命令 runner 自带，无需额外配置 Secret。
+      #   - gh release upload 对同名 asset 会报错，需先 --clobber 覆盖（或用 gh release delete 先删）。
+      #   - 用 --clobber 确保重复部署时覆盖同名 asset。
+      - name: Upload backend jar to GitHub Release
         env:
-          WIN_HOST: ${{ secrets.WIN_HOST }}
-          WIN_PORT: ${{ secrets.WIN_PORT }}
-          WIN_USER: ${{ secrets.WIN_USER }}
-          WIN_SSH_KEY: ${{ secrets.WIN_SSH_KEY }}
-          BACKEND_REMOTE_DIR: ${{ secrets.BACKEND_REMOTE_DIR }}
+          # Actions 自动提供的 token（具备仓库 contents 写权限）
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          # =================================================================
-          # 行为说明（解决"不知道是不是卡住了"的疑虑）：
-          #   GitHub Actions 的 run: 块是 detached 的，scp 的伪终端进度条 (xxx%)
-          #   被 GH 截掉看不到。本流程用"verbose + 关键阶段 echo + 计时报时"代替实时进度条：
-          #     - -v 输出每个里程碑：握手/认证/开远程文件/写数据/关文件
-          #     - 在每个里程碑前后 echo 时间和已耗时，让你秒判断是真卡还是传输中
-          #     - 用 trap 捕获 ERR 与关键信号，打印堆栈而不只是静默挂死
-          #   真正卡死的判定：连续 2 分钟没有任何 verbose 输出 + 没到 close file 阶段，才视为卡死。
-          # =================================================================
           ts() { date '+%H:%M:%S'; }
           mark() { echo "[$(ts)] $*"; }
-
           START_TIME=$(date +%s)
-
-          # 0. 解析参数 + 显示源文件大小（让你心里有数）
-          remote_dir="${BACKEND_REMOTE_DIR//\\//}"
-          case "$remote_dir" in
-            [A-Za-z]:/*)
-              remote_dir="/${remote_dir%%:*}:${remote_dir#*:}"
-              ;;
-          esac
 
           src="myauth/target/${{ env.BACKEND_JAR_NAME }}"
           if [ ! -f "$src" ]; then
@@ -190,61 +175,29 @@ jobs:
           src_size=$(stat -c%s "$src")
           src_size_hr=$(numfmt --to=iec --suffix=B "$src_size" 2>/dev/null || echo "${src_size}B")
 
-          mark "==== 上传准备 ===="
+          RELEASE_TAG="always-latest"
+          mark "==== 上传到 GitHub Release ===="
           mark "源文件    : $src ($src_size_hr)"
-          mark "目标服务器: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
-          mark "目标端口  : $WIN_PORT"
+          mark "Release   : ${GITHUB_REPOSITORY} tag=${RELEASE_TAG}"
+          mark "Asset     : ${{ env.BACKEND_JAR_NAME }}"
 
-          # 1. 私钥写入临时文件；EXIT trap 同时清理临时文件 + 打印最终耗时
-          tmpkey="$(mktemp)"
-          printf '%s\n' "$WIN_SSH_KEY" > "$tmpkey"
-          chmod 600 "$tmpkey"
-          mark "私钥已写入 $tmpkey"
-          cleanup_rc=0
-          trap 'cleanup_rc=$?; rm -f "$tmpkey" 2>/dev/null || true; mark "退出码 $cleanup_rc，已耗时 $(( $(date +%s) - START_TIME ))s"; exit $cleanup_rc' EXIT
+          # 1. 创建或更新 release（已存在则更新 tag 指向最新 commit）
+          mark "[$(ts)] 创建/更新 release ${RELEASE_TAG} ..."
+          gh release create "$RELEASE_TAG" \
+            --title "Auto-deploy (latest)" \
+            --notes "自动部署产生的固定 release，用于服务器拉取最新构建。" \
+            --latest || true   # 已存在时返回非 0，忽略继续
 
-          # 2. 尝试 3 次，每次失败前先告知等了多久
-          SUCCEEDED=0
-          for attempt in 1 2 3; do
-            mark "==== scp 上传尝试 #$attempt (累计 $(( $(date +%s) - START_TIME ))s) ===="
-            mark "[$(ts)] 正在连接 ${WIN_HOST}:${WIN_PORT} ..."
-            # -O 强制使用传统 scp 协议（非默认的 sftp 子系统）。
-            # Windows OpenSSH 的 sftp 服务端在传输较大文件（如本 jar 66.80MB）时
-            # 偶发在"打开远程文件"阶段挂起（对应日志最后一行 debug1: pledge: fork 后无输出），
-            # 传统 scp 协议处理大文件明显更稳，且能实时打印进度。
-            #
-            # 重要：上传目标文件名用 <jarName>.new（myauth.jar.new），而不是直接覆盖 myauth.jar。
-            # 原因：正常情况下 myauth.jar 正被运行中的 java 进程占用（Windows 对正在打开的文件
-            # 加锁），scp 直接覆盖可能被阻塞挂起（这正是此前"打开远程文件后卡死"的一个潜在根因）。
-            # 上传到 .new 是全新文件名，不受锁影响；后续 SSH 脚本"停旧进程后再 Move-Item 到正式名"
-            # 完成原子替换。
-            if scp -O -v -C \
-                 -P "$WIN_PORT" \
-                 -i "$tmpkey" \
-                 -o StrictHostKeyChecking=no \
-                 -o UserKnownHostsFile=/dev/null \
-                 -o ConnectTimeout=30 \
-                 -o ServerAliveInterval=30 \
-                 -o ServerAliveCountMax=10 \
-                 "$src" "${WIN_USER}@${WIN_HOST}:${remote_dir}/${{ env.BACKEND_JAR_NAME }}.new"; then
-              mark "[$(ts)] 上传完成 ✅ 总耗时 $(( $(date +%s) - START_TIME ))s 平均 $(( src_size / ($(date +%s) - START_TIME + 1) / 1024 ))KB/s"
-              SUCCEEDED=1
-              break
-            fi
-            rc=$?
-            if [ "$attempt" -eq 3 ]; then
-              mark "ERROR: scp 失败（已重试 3 次，最终退出码 $rc）"
-              cleanup_rc=$rc
-              exit $rc
-            fi
-            mark "[$(ts)] scp 失败 rc=$rc，10 秒后重试 ..."
-            sleep 10
-          done
-
-          if [ "$SUCCEEDED" -ne 1 ]; then
-            cleanup_rc=1
-            exit 1
+          # 2. 上传 asset（--clobber 覆盖同名文件）
+          mark "[$(ts)] 上传 asset ..."
+          gh release upload "$RELEASE_TAG" "$src" --clobber
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            mark "ERROR: gh release upload 失败 rc=$rc"
+            exit $rc
           fi
+
+          mark "[$(ts)] 上传完成 ✅ 总耗时 $(( $(date +%s) - START_TIME ))s"
           exit 0
 
       # 步骤 6：通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式）
@@ -270,6 +223,8 @@ jobs:
         env:
           # 将整文件 Secret 映射为远程环境变量，供 PowerShell 脚本写出后端配置
           BACKEND_CONFIG_YML: ${{ secrets.BACKEND_CONFIG_YML }}
+          # 仓库名（owner/repo），用于服务器端拼 GitHub Release 下载 URL
+          GITHUB_REPOSITORY: ${{ github.repository }}
         with:
           host: ${{ secrets.WIN_HOST }}
           port: ${{ secrets.WIN_PORT }}
@@ -318,6 +273,10 @@ jobs:
             $gzJarPath   = Join-Path $backendDir ($jarName + ".gz")
             $listenPort  = 6401   # 与宝塔执行命令 --server.port=6401 保持一致
             $javaExe     = "C:\BtSoft\jdk\jdk21\bin\java.exe"
+            # GitHub Release 固定下载 URL：公开仓库可匿名访问
+            # 格式：https://github.com/<owner>/<repo>/releases/download/always-latest/myauth.jar
+            $releaseUrl  = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/always-latest/$jarName"
+            Write-Host "Release 下载 URL: $releaseUrl"
 
             Write-Host "Backend dir : $backendDir"
             Write-Host "Jar path    : $jarPath"
@@ -363,6 +322,36 @@ jobs:
             }
 
             # ---------- 主流程 ----------
+
+            # 0. 从 GitHub Release 下载最新 jar 到临时文件 myauth.jar.new
+            #     背景（2026-08-15）：原 scp 方案是 GitHub runner 跨境推 jar 到国内服务器，
+            #     上行带宽极慢（几 KB/s）。改为：runner 先 gh release upload 到 GitHub Release（CDN），
+            #     这里服务器主动 curl 下载（拉取，走 CDN，通常远快于 scp 推）。
+            #     公开仓库 release 可匿名访问，无需认证。
+            #     下载到 .new 而非正式名，避免与正在运行的 java 进程锁冲突。
+            #     下载失败（网络/Release 未就绪）则抛错，此时旧进程未动，线上不受影响。
+            $downloadOk = $false
+            if (Test-Path $newJarPath) {
+                # 先清掉旧的 .new，避免残留影响判断
+                Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "开始从 GitHub Release 下载 $releaseUrl ..."
+            # Invoke-WebRequest 下载；-UseBasicParsing 避免 IE 引擎开销
+            try {
+                Invoke-WebRequest -Uri $releaseUrl -OutFile $newJarPath -UseBasicParsing -TimeoutSec 600
+                $dlSize = (Get-Item $newJarPath).Length
+                if ($dlSize -lt 10MB) {
+                    Write-Host "WARN: 下载结果仅 ${dlSize}B，疑似不完整，删除并跳过替换"
+                    Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
+                } else {
+                    Write-Host "下载完成 ✅ myauth.jar.new 大小 $dlSize 字节"
+                    $downloadOk = $true
+                }
+            } catch {
+                Write-Host "ERROR: 从 Release 下载失败 ($($_.Exception.Message))"
+                # 不抛错，让后续流程用现有 jar（相当于保留旧版本继续跑），
+                # 避免下载偶发失败直接让部署雪崩。
+            }
 
             # 0. 防御性校验：清理遗留的残缺 jar / 残留中间文件
             #    背景（2026-08-15）：曾因传输中断在 $backendDir 残留一个 6.72MB 的
@@ -430,10 +419,10 @@ jobs:
             Stop-MyauthProcess
 
             # 3.5 用 .new 替换正式 jar
-            #     上传阶段 scp 写的是 myauth.jar.new（不占用正式名、不受旧进程锁影响）。
+            #     .new 由"步骤 0"从 GitHub Release 下载（不占用正式名、不受旧进程锁影响）。
             #     停旧进程后，jar 锁已释放，这里把 .new 原子移动（重命名）为正式 myauth.jar。
-            #     若 .new 不存在（如本次没上传后端），则保留现有 jar 不动，避免误删/清空。
-            #     若 .new 存在但过小（<10MB 明显残缺，正常约 66.80MB），视为本次上传中断，
+            #     若 .new 不存在（如下载失败/Release 未就绪），则保留现有 jar 不动，避免误删/清空。
+            #     若 .new 存在但过小（<10MB 明显残缺，正常约 66.80MB），视为下载不完整，
             #     不替换、保留旧 jar，避免启动残缺 jar。
             if (Test-Path $newJarPath) {
                 $newSize = (Get-Item $newJarPath).Length
@@ -525,26 +514,16 @@ jobs:
           fi
           yarn build
 
-      # 步骤 4：打包 + scp 上传前端 dist 到 Windows 服务器
+      # 步骤 4：打包前端 dist 并通过 gh CLI 上传到 GitHub Release（与后端同一 release）
       #
-      # 说明：target 目录对应宝塔网站根目录，如 C:/wwwroot/my.52shell.ltd/
-      #
-      # 稳定性增强（与后端上传一致）：
-      #   1. 放弃 appleboy/scp-action（v0.1.7 断连卡死 bug），改用原生 scp；
-      #   2. 先把整个 dist 打包成单个 tar.gz（前端 js/css 压缩率极高，可压到 1/10 甚至更低），
-      #      只上传 1 个文件，彻底规避"大量小文件 + idle SSH 通道"导致的断连；
-      #   3. scp 用 -C 压缩 + ServerAliveInterval 保活 + 自动重试 3 次；
-      #   4. 服务器端用 Windows 自带 bsdtar 解压（默认覆盖同名文件、不清空目录，
-      #      保留用户自行放置的静态资源，与旧 overwrite:false 语义一致）。
-      #   5. -v 输出握手/认证里程碑，echo 时间戳与已耗时，缓解"看不到进度"的焦虑；
-      #      真正判定卡死：连续 2 分钟内 -v 无任何新输出。
-      - name: Package and upload frontend dist
+      # 说明（2026-08-15 从 scp 改为 Release 拉取，与后端统一）：
+      #   1. 先把整个 dist 打包成单个 tar.gz（前端 js/css 压缩率极高，可压到 1/10 甚至更低）；
+      #   2. 用 gh CLI 上传到固定 release（tag=always-latest，asset 名 dist.tar.gz，--clobber 覆盖）；
+      #   3. 服务器端再从 Release 下载 dist.tar.gz，用 Windows bsdtar 解压到网站根目录
+      #      （默认覆盖同名文件、不清空目录，保留用户自行放置的静态资源）。
+      - name: Package and upload frontend dist to GitHub Release
         env:
-          WIN_HOST: ${{ secrets.WIN_HOST }}
-          WIN_PORT: ${{ secrets.WIN_PORT }}
-          WIN_USER: ${{ secrets.WIN_USER }}
-          WIN_SSH_KEY: ${{ secrets.WIN_SSH_KEY }}
-          FRONTEND_REMOTE_DIR: ${{ secrets.FRONTEND_REMOTE_DIR }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -559,66 +538,36 @@ jobs:
           src_size_hr=$(numfmt --to=iec --suffix=B "$src_size" 2>/dev/null || echo "${src_size}B")
           mark "已生成 dist.tar.gz ($src_size_hr)"
 
-          # 2. 路径转换
-          remote_dir="${FRONTEND_REMOTE_DIR//\\//}"
-          case "$remote_dir" in
-            [A-Za-z]:/*)
-              remote_dir="/${remote_dir%%:*}:${remote_dir#*:}"
-              ;;
-          esac
+          # 2. 上传到固定 release（若 release 不存在则创建）
+          RELEASE_TAG="always-latest"
+          mark "==== 上传到 GitHub Release ===="
+          mark "Release   : ${GITHUB_REPOSITORY} tag=${RELEASE_TAG}"
+          mark "Asset     : dist.tar.gz"
 
-          mark "==== 上传准备 ===="
-          mark "目标服务器: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
+          gh release create "$RELEASE_TAG" \
+            --title "Auto-deploy (latest)" \
+            --notes "自动部署产生的固定 release，用于服务器拉取最新构建。" \
+            --latest || true
 
-          tmpkey="$(mktemp)"
-          printf '%s\n' "$WIN_SSH_KEY" > "$tmpkey"
-          chmod 600 "$tmpkey"
-          cleanup_rc=0
-          trap 'cleanup_rc=$?; rm -f "$tmpkey" dist.tar.gz 2>/dev/null || true; mark "退出码 $cleanup_rc，已耗时 $(( $(date +%s) - START_TIME ))s"; exit $cleanup_rc' EXIT
-
-          SUCCEEDED=0
-          for attempt in 1 2 3; do
-            mark "==== scp 上传尝试 #$attempt (累计 $(( $(date +%s) - START_TIME ))s) ===="
-            mark "[$(ts)] 正在连接 ${WIN_HOST}:${WIN_PORT} ..."
-            # -O 强制使用传统 scp 协议（与后端上传一致），
-            # Windows OpenSSH 的 sftp 服务端在传大文件时易在"打开远程文件"阶段挂起，
-            # 传统 scp 协议处理更稳。
-            if scp -O -v -C \
-                 -P "$WIN_PORT" \
-                 -i "$tmpkey" \
-                 -o StrictHostKeyChecking=no \
-                 -o UserKnownHostsFile=/dev/null \
-                 -o ConnectTimeout=30 \
-                 -o ServerAliveInterval=30 \
-                 -o ServerAliveCountMax=10 \
-                 dist.tar.gz "${WIN_USER}@${WIN_HOST}:${remote_dir}/dist.tar.gz"; then
-              mark "[$(ts)] 上传完成 ✅ 总耗时 $(( $(date +%s) - START_TIME ))s"
-              SUCCEEDED=1
-              break
-            fi
-            rc=$?
-            if [ "$attempt" -eq 3 ]; then
-              mark "ERROR: 前端 scp 失败（已重试 3 次，最终退出码 $rc）"
-              cleanup_rc=$rc
-              exit $rc
-            fi
-            mark "[$(ts)] scp 失败 rc=$rc，10 秒后重试 ..."
-            sleep 10
-          done
-
-          if [ "$SUCCEEDED" -ne 1 ]; then
-            cleanup_rc=1
-            exit 1
+          mark "[$(ts)] 上传 asset ..."
+          gh release upload "$RELEASE_TAG" dist.tar.gz --clobber
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            mark "ERROR: gh release upload 失败 rc=$rc"
+            exit $rc
           fi
-          exit 0
+          rm -f dist.tar.gz
+          mark "[$(ts)] 上传完成 ✅ 总耗时 $(( $(date +%s) - START_TIME ))s"
 
-      # 步骤 4.5：SSH 到服务器解压前端 dist
-      # 用 Windows 自带 bsdtar 解压 tar.gz，覆盖同名文件且不清空目录，
-      # 与旧 overwrite:false 语义一致（保留用户自行放置的静态资源）。
-      - name: Extract frontend dist on server
+      # 步骤 4.5：SSH 到服务器，从 GitHub Release 下载前端 dist 并解压
+      # 从 Release 拉取 dist.tar.gz（公开仓库匿名可访问），用 Windows 自带 bsdtar 解压，
+      # 覆盖同名文件且不清空目录，与旧 overwrite:false 语义一致（保留用户自行放置的静态资源）。
+      - name: Download and extract frontend dist on server
         uses: appleboy/ssh-action@v1.2.5
         env:
           FRONTEND_REMOTE_DIR: ${{ secrets.FRONTEND_REMOTE_DIR }}
+          # 仓库名（owner/repo），用于拼 GitHub Release 下载 URL
+          GITHUB_REPOSITORY: ${{ github.repository }}
         with:
           host: ${{ secrets.WIN_HOST }}
           port: ${{ secrets.WIN_PORT }}
@@ -629,10 +578,22 @@ jobs:
           script: |
             $dir = "$env:FRONTEND_REMOTE_DIR"
             $tgz = Join-Path $dir "dist.tar.gz"
-            if (-not (Test-Path $tgz)) {
-              throw "未找到 $tgz，前端上传可能失败"
+            # GitHub Release 固定下载 URL（公开仓库匿名可访问）
+            $releaseUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/always-latest/dist.tar.gz"
+            Write-Host "从 Release 下载: $releaseUrl"
+            try {
+                Invoke-WebRequest -Uri $releaseUrl -OutFile $tgz -UseBasicParsing -TimeoutSec 600
+            } catch {
+                throw "下载 dist.tar.gz 失败: $($_.Exception.Message)"
             }
-            Write-Host "解压 $tgz 到 $dir ..."
+            if (-not (Test-Path $tgz)) {
+              throw "未找到 $tgz，前端下载失败"
+            }
+            $tgzSize = (Get-Item $tgz).Length
+            if ($tgzSize -lt 1MB) {
+              throw "dist.tar.gz 过小(${tgzSize}B)，下载不完整"
+            }
+            Write-Host "下载完成，大小 $tgzSize 字节；开始解压到 $dir ..."
             # bsdtar 解压，-x 解包 -z 解 gzip -f 指定文件；
             # --strip-components 1 去掉打包时最外层 dist/ 目录，使文件直接落到网站根目录；
             # 默认覆盖同名文件、不清空目录（与旧 overwrite:false 语义一致，保留用户静态资源）
