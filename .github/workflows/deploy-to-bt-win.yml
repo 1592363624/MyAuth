@@ -159,27 +159,55 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 目标远程路径：将 Windows 风格 C:/wwwroot/... 转为 scp 可识别的 /C:/wwwroot/...
+          # =================================================================
+          # 行为说明（解决"不知道是不是卡住了"的疑虑）：
+          #   GitHub Actions 的 run: 块是 detached 的，scp 的伪终端进度条 (xxx%)
+          #   被 GH 截掉看不到。本流程用"verbose + 关键阶段 echo + 计时报时"代替实时进度条：
+          #     - -v 输出每个里程碑：握手/认证/开远程文件/写数据/关文件
+          #     - 在每个里程碑前后 echo 时间和已耗时，让你秒判断是真卡还是传输中
+          #     - 用 trap 捕获 ERR 与关键信号，打印堆栈而不只是静默挂死
+          #   真正卡死的判定：连续 2 分钟没有任何 verbose 输出 + 没到 close file 阶段，才视为卡死。
+          # =================================================================
+          ts() { date '+%H:%M:%S'; }
+          mark() { echo "[$(ts)] $*"; }
+
+          START_TIME=$(date +%s)
+
+          # 0. 解析参数 + 显示源文件大小（让你心里有数）
           remote_dir="${BACKEND_REMOTE_DIR//\\//}"
-          # 去掉可能存在的盘符冒号，scp 对 Windows 盘符路径格式为 /C:/wwwroot/...
           case "$remote_dir" in
             [A-Za-z]:/*)
               remote_dir="/${remote_dir%%:*}:${remote_dir#*:}"
               ;;
           esac
 
-          echo "上传 jar 到: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
-          echo "私钥写入临时文件"
+          src="myauth/target/${{ env.BACKEND_JAR_NAME }}.gz"
+          if [ ! -f "$src" ]; then
+            mark "ERROR: 找不到源文件 $src"
+            exit 1
+          fi
+          src_size=$(stat -c%s "$src")
+          src_size_hr=$(numfmt --to=iec --suffix=B "$src_size" 2>/dev/null || echo "${src_size}B")
+
+          mark "==== 上传准备 ===="
+          mark "源文件    : $src ($src_size_hr)"
+          mark "目标服务器: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
+          mark "目标端口  : $WIN_PORT"
+
+          # 1. 私钥写入临时文件；EXIT trap 同时清理临时文件 + 打印最终耗时
           tmpkey="$(mktemp)"
           printf '%s\n' "$WIN_SSH_KEY" > "$tmpkey"
           chmod 600 "$tmpkey"
-          trap 'rm -f "$tmpkey"' EXIT
+          mark "私钥已写入 $tmpkey"
+          cleanup_rc=0
+          trap 'cleanup_rc=$?; rm -f "$tmpkey" 2>/dev/null || true; mark "退出码 $cleanup_rc，已耗时 $(( $(date +%s) - START_TIME ))s"; exit $cleanup_rc' EXIT
 
-          src="myauth/target/${{ env.BACKEND_JAR_NAME }}.gz"
-          # 连接/传输失败自动重试，最多 3 次，间隔 10s
+          # 2. 尝试 3 次，每次失败前先告知等了多久
+          SUCCEEDED=0
           for attempt in 1 2 3; do
-            echo "===== scp 上传尝试 #$attempt ====="
-            if scp -C \
+            mark "==== scp 上传尝试 #$attempt (累计 $(( $(date +%s) - START_TIME ))s) ===="
+            mark "[$(ts)] 正在连接 ${WIN_HOST}:${WIN_PORT} ..."
+            if scp -v -C \
                  -P "$WIN_PORT" \
                  -i "$tmpkey" \
                  -o StrictHostKeyChecking=no \
@@ -188,16 +216,29 @@ jobs:
                  -o ServerAliveInterval=30 \
                  -o ServerAliveCountMax=10 \
                  "$src" "${WIN_USER}@${WIN_HOST}:${remote_dir}/"; then
-              echo "上传成功"
+              mark "[$(ts)] 上传完成 ✅ 总耗时 $(( $(date +%s) - START_TIME ))s 平均 $(( src_size / ($(date +%s) - START_TIME + 1) / 1024 ))KB/s"
+              SUCCEEDED=1
               break
             fi
+            rc=$?
             if [ "$attempt" -eq 3 ]; then
-              echo "ERROR: scp 上传失败（已重试 3 次）"
-              exit 1
+              mark "ERROR: scp 失败（已重试 3 次，最终退出码 $rc）"
+              cleanup_rc=$rc
+              exit $rc
             fi
-            echo "scp 失败，10 秒后重试..."
+            mark "[$(ts)] scp 失败 rc=$rc，10 秒后重试 ..."
             sleep 10
           done
+
+          if [ "$SUCCEEDED" -ne 1 ]; then
+            cleanup_rc=1
+            exit 1
+          fi
+          exit 0
+
+          if [ "$SUCCEEDED" -ne 1 ]; then
+            exit 1
+          fi
 
       # 步骤 6：通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式）
       #
@@ -452,7 +493,7 @@ jobs:
           fi
           yarn build
 
-      # 步骤 4：通过 scp 上传前端 dist 产物到 Windows 服务器
+      # 步骤 4：打包 + scp 上传前端 dist 到 Windows 服务器
       #
       # 说明：target 目录对应宝塔网站根目录，如 C:/wwwroot/my.52shell.ltd/
       #
@@ -463,6 +504,8 @@ jobs:
       #   3. scp 用 -C 压缩 + ServerAliveInterval 保活 + 自动重试 3 次；
       #   4. 服务器端用 Windows 自带 bsdtar 解压（默认覆盖同名文件、不清空目录，
       #      保留用户自行放置的静态资源，与旧 overwrite:false 语义一致）。
+      #   5. -v 输出握手/认证里程碑，echo 时间戳与已耗时，缓解"看不到进度"的焦虑；
+      #      真正判定卡死：连续 2 分钟内 -v 无任何新输出。
       - name: Package and upload frontend dist
         env:
           WIN_HOST: ${{ secrets.WIN_HOST }}
@@ -473,12 +516,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1. 打包 dist 为单个 tar.gz，文件名固定为 dist.tar.gz（gitignore 之外的临时产物）
-          echo "打包前端 dist ..."
-          tar -C myauth-web -czf dist.tar.gz dist
-          ls -la dist.tar.gz
+          ts() { date '+%H:%M:%S'; }
+          mark() { echo "[$(ts)] $*"; }
+          START_TIME=$(date +%s)
 
-          # 2. 将 Windows 风格远程目录 C:/wwwroot/... 转为 scp 可识别的 /C:/wwwroot/...
+          # 1. 打包 dist 为单个 tar.gz
+          mark "==== 打包前端 dist ===="
+          tar -C myauth-web -czf dist.tar.gz dist
+          src_size=$(stat -c%s dist.tar.gz)
+          src_size_hr=$(numfmt --to=iec --suffix=B "$src_size" 2>/dev/null || echo "${src_size}B")
+          mark "已生成 dist.tar.gz ($src_size_hr)"
+
+          # 2. 路径转换
           remote_dir="${FRONTEND_REMOTE_DIR//\\//}"
           case "$remote_dir" in
             [A-Za-z]:/*)
@@ -486,15 +535,20 @@ jobs:
               ;;
           esac
 
-          echo "上传到: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
+          mark "==== 上传准备 ===="
+          mark "目标服务器: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
+
           tmpkey="$(mktemp)"
           printf '%s\n' "$WIN_SSH_KEY" > "$tmpkey"
           chmod 600 "$tmpkey"
-          trap 'rm -f "$tmpkey" dist.tar.gz' EXIT
+          cleanup_rc=0
+          trap 'cleanup_rc=$?; rm -f "$tmpkey" dist.tar.gz 2>/dev/null || true; mark "退出码 $cleanup_rc，已耗时 $(( $(date +%s) - START_TIME ))s"; exit $cleanup_rc' EXIT
 
+          SUCCEEDED=0
           for attempt in 1 2 3; do
-            echo "===== scp 上传尝试 #$attempt ====="
-            if scp -C \
+            mark "==== scp 上传尝试 #$attempt (累计 $(( $(date +%s) - START_TIME ))s) ===="
+            mark "[$(ts)] 正在连接 ${WIN_HOST}:${WIN_PORT} ..."
+            if scp -v -C \
                  -P "$WIN_PORT" \
                  -i "$tmpkey" \
                  -o StrictHostKeyChecking=no \
@@ -503,16 +557,25 @@ jobs:
                  -o ServerAliveInterval=30 \
                  -o ServerAliveCountMax=10 \
                  dist.tar.gz "${WIN_USER}@${WIN_HOST}:${remote_dir}/dist.tar.gz"; then
-              echo "上传成功"
+              mark "[$(ts)] 上传完成 ✅ 总耗时 $(( $(date +%s) - START_TIME ))s"
+              SUCCEEDED=1
               break
             fi
+            rc=$?
             if [ "$attempt" -eq 3 ]; then
-              echo "ERROR: 前端 scp 上传失败（已重试 3 次）"
-              exit 1
+              mark "ERROR: 前端 scp 失败（已重试 3 次，最终退出码 $rc）"
+              cleanup_rc=$rc
+              exit $rc
             fi
-            echo "scp 失败，10 秒后重试..."
+            mark "[$(ts)] scp 失败 rc=$rc，10 秒后重试 ..."
             sleep 10
           done
+
+          if [ "$SUCCEEDED" -ne 1 ]; then
+            cleanup_rc=1
+            exit 1
+          fi
+          exit 0
 
       # 步骤 4.5：SSH 到服务器解压前端 dist
       # 用 Windows 自带 bsdtar 解压 tar.gz，覆盖同名文件且不清空目录，
