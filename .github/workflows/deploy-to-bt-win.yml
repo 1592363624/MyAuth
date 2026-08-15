@@ -212,6 +212,12 @@ jobs:
             # Windows OpenSSH 的 sftp 服务端在传输较大文件（如本 jar 66.80MB）时
             # 偶发在"打开远程文件"阶段挂起（对应日志最后一行 debug1: pledge: fork 后无输出），
             # 传统 scp 协议处理大文件明显更稳，且能实时打印进度。
+            #
+            # 重要：上传目标文件名用 <jarName>.new（myauth.jar.new），而不是直接覆盖 myauth.jar。
+            # 原因：正常情况下 myauth.jar 正被运行中的 java 进程占用（Windows 对正在打开的文件
+            # 加锁），scp 直接覆盖可能被阻塞挂起（这正是此前"打开远程文件后卡死"的一个潜在根因）。
+            # 上传到 .new 是全新文件名，不受锁影响；后续 SSH 脚本"停旧进程后再 Move-Item 到正式名"
+            # 完成原子替换。
             if scp -O -v -C \
                  -P "$WIN_PORT" \
                  -i "$tmpkey" \
@@ -220,7 +226,7 @@ jobs:
                  -o ConnectTimeout=30 \
                  -o ServerAliveInterval=30 \
                  -o ServerAliveCountMax=10 \
-                 "$src" "${WIN_USER}@${WIN_HOST}:${remote_dir}/"; then
+                 "$src" "${WIN_USER}@${WIN_HOST}:${remote_dir}/${{ env.BACKEND_JAR_NAME }}.new"; then
               mark "[$(ts)] 上传完成 ✅ 总耗时 $(( $(date +%s) - START_TIME ))s 平均 $(( src_size / ($(date +%s) - START_TIME + 1) / 1024 ))KB/s"
               SUCCEEDED=1
               break
@@ -308,6 +314,7 @@ jobs:
             $jarName     = "${{ env.BACKEND_JAR_NAME }}"
             $jarPath     = Join-Path $backendDir $jarName
             $bakJarPath  = Join-Path $backendDir ($jarName + ".bak")
+            $newJarPath  = Join-Path $backendDir ($jarName + ".new")
             $gzJarPath   = Join-Path $backendDir ($jarName + ".gz")
             $listenPort  = 6401   # 与宝塔执行命令 --server.port=6401 保持一致
             $javaExe     = "C:\BtSoft\jdk\jdk21\bin\java.exe"
@@ -419,10 +426,29 @@ jobs:
                 Write-Host "WARN: 未配置 BACKEND_CONFIG_YML，保留服务器现有 config\application.yml"
             }
 
-            # 3. 停止旧进程
+            # 3. 停止旧进程（释放 java 对 myauth.jar 的占用锁）
             Stop-MyauthProcess
 
-            # 4. 启动新 jar（scp 已直传覆盖，此处直接使用 $jarPath 即可）
+            # 3.5 用 .new 替换正式 jar
+            #     上传阶段 scp 写的是 myauth.jar.new（不占用正式名、不受旧进程锁影响）。
+            #     停旧进程后，jar 锁已释放，这里把 .new 原子移动（重命名）为正式 myauth.jar。
+            #     若 .new 不存在（如本次没上传后端），则保留现有 jar 不动，避免误删/清空。
+            #     若 .new 存在但过小（<10MB 明显残缺，正常约 66.80MB），视为本次上传中断，
+            #     不替换、保留旧 jar，避免启动残缺 jar。
+            if (Test-Path $newJarPath) {
+                $newSize = (Get-Item $newJarPath).Length
+                if ($newSize -lt 10MB) {
+                    Write-Host "WARN: $newJarPath 仅 ${newSize}B，疑似残缺上传，本次不替换，保留现有 jar"
+                    Remove-Item -Path $newJarPath -Force -ErrorAction SilentlyContinue
+                } else {
+                    Move-Item -Path $newJarPath -Destination $jarPath -Force
+                    Write-Host "已用 .new 替换正式 jar，当前大小 $newSize 字节"
+                }
+            } else {
+                Write-Host "WARN: 未找到 $newJarPath，本次跳过 jar 替换（可能为前端-only 部署或上传未发生）"
+            }
+
+            # 4. 启动新 jar（此时 $jarPath 已是替换后的新 jar）
             Start-Myauth -JarToRun $jarPath
 
             # 5. 等待新 jar 就绪
