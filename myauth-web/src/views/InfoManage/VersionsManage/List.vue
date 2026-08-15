@@ -328,7 +328,8 @@ export default {
         title: `确认${actionText}选中的 ${this.selectedRowKeys.length} 个版本吗?`,
         onOk () {
           return new Promise((resolve, reject) => {
-            thisObj.submitBatchStatus(this.selectedRowKeys, status, resolve, reject)
+            // 注意：onOk 内部 this 不是组件实例，必须使用外层捕获的 thisObj 来读取选中项
+            thisObj.submitBatchStatus(thisObj.selectedRowKeys, status, resolve, reject)
           }).catch(() => console.log('Oops errors!'))
         }
       })
