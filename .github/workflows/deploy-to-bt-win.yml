@@ -207,7 +207,11 @@ jobs:
           for attempt in 1 2 3; do
             mark "==== scp 上传尝试 #$attempt (累计 $(( $(date +%s) - START_TIME ))s) ===="
             mark "[$(ts)] 正在连接 ${WIN_HOST}:${WIN_PORT} ..."
-            if scp -v -C \
+            # -O 强制使用传统 scp 协议（非默认的 sftp 子系统）。
+            # Windows OpenSSH 的 sftp 服务端在传输较大文件（如本 jar 71MB）时
+            # 偶发在"打开远程文件"阶段挂起（对应日志最后一行 debug1: pledge: fork 后无输出），
+            # 传统 scp 协议处理大文件明显更稳，且能实时打印进度。
+            if scp -O -v -C \
                  -P "$WIN_PORT" \
                  -i "$tmpkey" \
                  -o StrictHostKeyChecking=no \
@@ -356,7 +360,39 @@ jobs:
 
             # ---------- 主流程 ----------
 
-            # 0. 写出外部生产配置（jar 所在目录的 config\application.yml）
+            # 0. 清理上次未完成的 scp 残缺上传（防御性）
+            #    背景：2026-08-15 实测两次推送都因 GitHub runner → Windows OpenSSH 的 sftp
+            #    通道在"打开远程文件"阶段挂起而失败，期间已在 $backendDir 下生成了不完整
+            #    的 myauth.jar.gz（例如 6.72 MB，远小于完整 jar）。如果不清它，下次解压
+            #    GZipStream 会抛 InvalidDataException，导致整个部署失败且回滚链也指向残缺文件。
+            #    这里用 try/finally 保证无论删除成败，主流程都继续往下走。
+            if (Test-Path $gzJarPath) {
+                Write-Host "发现已存在的 $gzJarPath，先清理（避免与新上传冲突） ..."
+                try {
+                    Remove-Item -Path $gzJarPath -Force -ErrorAction Stop
+                    Write-Host "已清理旧 .jar.gz"
+                } catch {
+                    Write-Host "WARN: 清理旧 .jar.gz 失败 ($($_.Exception.Message))，将尝试强制覆盖"
+                }
+            }
+            # 校验 jar 本体大小（如果存在）的合理性，防止半成品 jar 残留
+            if (Test-Path $jarPath) {
+                $existingJarSize = (Get-Item $jarPath).Length
+                if ($existingJarSize -lt 10MB) {
+                    Write-Host "WARN: 现有 $jarName 大小仅 ${existingJarSize}B，过小疑似残缺，重命名为 .bak.broken 以备排查"
+                    $brokenPath = Join-Path $backendDir ($jarName + ".bak.broken")
+                    try {
+                        Move-Item -Path $jarPath -Destination $brokenPath -Force
+                        Write-Host "已将可疑残缺 jar 隔离到 $brokenPath"
+                    } catch {
+                        Write-Host "WARN: 隔离残缺 jar 失败 ($($_.Exception.Message))"
+                    }
+                } else {
+                    Write-Host "现有 $jarName 大小 $existingJarSize 字节，正常"
+                }
+            }
+
+            # 1. 写出外部生产配置（jar 所在目录的 config\application.yml）
             #    说明：用户服务器实际路径为 C:\wwwroot\myauth\config\application.yml，
             #    这是 Spring Boot 标准外部 config 子目录约定，优先级高于 jar 内部配置，
             #    且后续重传 jar 不会覆盖它。该文件作为主配置直接使用（不依赖 profile）。
@@ -378,9 +414,13 @@ jobs:
             # 1. 备份当前（旧）jar，供失败回滚使用
             #    注意：必须在解压新 jar 之前备份，否则 $jarPath 已被新版本覆盖，
             #    备份出来的 .bak 就会是新 jar，回滚将失去意义。
+            #    如果前面的清理步骤已经把残缺 jar 隔离到 .bak.broken（场景：上次部署意外中断），
+            #    此时 $jarPath 不存在，回滚降级为"无旧版本可回"，仅打印提示，不抛错。
             if (Test-Path $jarPath) {
                 Copy-Item -Path $jarPath -Destination $bakJarPath -Force
                 Write-Host "已备份旧 jar -> $bakJarPath"
+            } else {
+                Write-Host "WARN: $jarPath 不存在，无旧 jar 可备份（可能为首次部署或上次的 jar 已被隔离为残缺）"
             }
 
             # 1.5 解压上传的 jar.gz，覆盖为新的 myauth.jar
@@ -548,7 +588,10 @@ jobs:
           for attempt in 1 2 3; do
             mark "==== scp 上传尝试 #$attempt (累计 $(( $(date +%s) - START_TIME ))s) ===="
             mark "[$(ts)] 正在连接 ${WIN_HOST}:${WIN_PORT} ..."
-            if scp -v -C \
+            # -O 强制使用传统 scp 协议（与后端上传一致），
+            # Windows OpenSSH 的 sftp 服务端在传大文件时易在"打开远程文件"阶段挂起，
+            # 传统 scp 协议处理更稳。
+            if scp -O -v -C \
                  -P "$WIN_PORT" \
                  -i "$tmpkey" \
                  -o StrictHostKeyChecking=no \
