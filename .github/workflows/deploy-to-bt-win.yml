@@ -138,39 +138,66 @@ jobs:
           gzip -kf target/${{ env.BACKEND_JAR_NAME }}
           ls -la target/${{ env.BACKEND_JAR_NAME }}*
 
-      # 步骤 5：通过 SCP 上传后端 jar 到 Windows 服务器
-      # 说明：target 目录对应服务器上的后端存放目录，如 C:/wwwroot/myauth/
+      # 步骤 5：通过 scp 上传后端 jar（.jar.gz）到 Windows 服务器
       #
-      # 稳定性增强（修复 19 分钟卡死问题）：
-      #   1. 升级到 scp-action v0.1.10（修复旧版连接断后 retry 不及时导致 Broken pipe 后拖到超时）；
-      #   2. 启用 -C 压缩（小 jar 压缩后基本是 MB 级，对几十 MB 的 spring boot jar 很划算，能显著降低被中间链路 idle 掐断的概率）；
-      #   3. 启用 retry 机制（连接失败时自动重试 3 次，每次间隔 10s）；
-      #   4. 显式设置 command_timeout，避免旧版默认 10 分钟；
-      #   5. 兼容 SSH 路径格式：使用正斜杠，scp 内部会转换为 Windows 路径。
+      # 说明：
+      #   - 放弃 appleboy/scp-action（其 v0.1.7 在 SSH 断连后不会及时退出，会反复攒 progress
+      #     样本拖到 command_timeout 才报错，正是本次卡 19 分钟的根因）。
+      #   - 改用 GitHub ubuntu runner 自带的原生 scp 命令（openssh-client），配合：
+      #       1. -C 启用 SSH 压缩（jar 压缩后约 1/3，传输更快）；
+      #       2. 自动重试循环（最多 3 次，间隔 10s），断连后自动重新上传；
+      #       3. 私钥写入临时文件，ssh 指纹 StrictHostKeyChecking 默认自动接受；
+      #   - 与远端 Windows OpenSSH 兼容：target 使用正斜杠格式 /C:/wwwroot/...，
+      #     scp 服务端会正确解析为 C:\wwwroot\...。
       - name: Upload backend jar to Windows server
-        uses: appleboy/scp-action@v0.1.10
-        with:
-          host: ${{ secrets.WIN_HOST }}
-          port: ${{ secrets.WIN_PORT }}
-          username: ${{ secrets.WIN_USER }}
-          # 使用私钥登录（密钥登录模式），私钥内容存放于 WIN_SSH_KEY
-          key: ${{ secrets.WIN_SSH_KEY }}
-          source: "myauth/target/${{ env.BACKEND_JAR_NAME }}.gz"
-          target: ${{ secrets.BACKEND_REMOTE_DIR }}
-          # 不保留本地目录层级，直接将 jar 放到目标目录下
-          strip_components: 2
-          # 注意：Windows 自带 tar 为 bsdtar(libarchive)，不支持 GNU tar 的 --overwrite 选项，
-          # 设 true 会导致远端解压报 "Option --overwrite is not supported" 而失败；
-          # bsdtar 解压默认即覆盖同名文件，故此处必须为 false。
-          overwrite: false
-          # 启用 SSH 压缩传输（zlib），减小 jar 体积在网络上的占用，降低被中间链路当 idle 掐掉的概率
-          use_scp_compression: true
-          # 连接/上传失败时自动重试，最多 3 次，每次间隔 10s
-          retry: true
-          retry_count: 3
-          retry_interval: 10s
-          # 显式放宽命令超时到 30 分钟，覆盖默认 10 分钟
-          command_timeout: 30m
+        env:
+          WIN_HOST: ${{ secrets.WIN_HOST }}
+          WIN_PORT: ${{ secrets.WIN_PORT }}
+          WIN_USER: ${{ secrets.WIN_USER }}
+          WIN_SSH_KEY: ${{ secrets.WIN_SSH_KEY }}
+          BACKEND_REMOTE_DIR: ${{ secrets.BACKEND_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+
+          # 目标远程路径：将 Windows 风格 C:/wwwroot/... 转为 scp 可识别的 /C:/wwwroot/...
+          remote_dir="${BACKEND_REMOTE_DIR//\\//}"
+          # 去掉可能存在的盘符冒号，scp 对 Windows 盘符路径格式为 /C:/wwwroot/...
+          case "$remote_dir" in
+            [A-Za-z]:/*)
+              remote_dir="/${remote_dir%%:*}:${remote_dir#*:}"
+              ;;
+          esac
+
+          echo "上传 jar 到: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
+          echo "私钥写入临时文件"
+          tmpkey="$(mktemp)"
+          printf '%s\n' "$WIN_SSH_KEY" > "$tmpkey"
+          chmod 600 "$tmpkey"
+          trap 'rm -f "$tmpkey"' EXIT
+
+          src="myauth/target/${{ env.BACKEND_JAR_NAME }}.gz"
+          # 连接/传输失败自动重试，最多 3 次，间隔 10s
+          for attempt in 1 2 3; do
+            echo "===== scp 上传尝试 #$attempt ====="
+            if scp -C \
+                 -P "$WIN_PORT" \
+                 -i "$tmpkey" \
+                 -o StrictHostKeyChecking=no \
+                 -o UserKnownHostsFile=/dev/null \
+                 -o ConnectTimeout=30 \
+                 -o ServerAliveInterval=30 \
+                 -o ServerAliveCountMax=10 \
+                 "$src" "${WIN_USER}@${WIN_HOST}:${remote_dir}/"; then
+              echo "上传成功"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ERROR: scp 上传失败（已重试 3 次）"
+              exit 1
+            fi
+            echo "scp 失败，10 秒后重试..."
+            sleep 10
+          done
 
       # 步骤 6：通过 SSH 执行 PowerShell 脚本重启后端 Java 进程（进程模式）
       #
@@ -191,7 +218,7 @@ jobs:
       #     最多允许 10 次（即 5 分钟无活动才断开）。这样 GitHub runner 在 jar 上传期间即使
       #     没有产生流量，SSH 通道也不会被中间链路/NAT 误判为 idle 而掐断。
       - name: Restart backend Java application
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           # 将整文件 Secret 映射为远程环境变量，供 PowerShell 脚本写出后端配置
           BACKEND_CONFIG_YML: ${{ secrets.BACKEND_CONFIG_YML }}
@@ -288,8 +315,36 @@ jobs:
 
             # ---------- 主流程 ----------
 
-            # 0.5 解压上传的 jar.gz，回滚后无需重新下载
-            #     失败则直接抛错，不动旧 jar 与旧进程（线上不会被这次失败影响）。
+            # 0. 写出外部生产配置（jar 所在目录的 config\application.yml）
+            #    说明：用户服务器实际路径为 C:\wwwroot\myauth\config\application.yml，
+            #    这是 Spring Boot 标准外部 config 子目录约定，优先级高于 jar 内部配置，
+            #    且后续重传 jar 不会覆盖它。该文件作为主配置直接使用（不依赖 profile）。
+            #    整文件 Secret(BACKEND_CONFIG_YML) 直接写出覆盖；若未配置该 Secret，则保留服务器现有文件。
+            $configDir  = Join-Path $backendDir "config"
+            $prodConfig = Join-Path $configDir "application.yml"
+            if (-not (Test-Path $configDir)) {
+                New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+            }
+            if ($env:BACKEND_CONFIG_YML) {
+                # 写入 UTF-8 BOM（Windows PowerShell 默认 Set-Content 为 UTF-16，Spring 读取需 UTF-8）
+                $utf8 = New-Object System.Text.UTF8Encoding($true)
+                [System.IO.File]::WriteAllText($prodConfig, $env:BACKEND_CONFIG_YML, $utf8)
+                Write-Host "已用 BACKEND_CONFIG_YML 覆盖写出 config\application.yml"
+            } else {
+                Write-Host "WARN: 未配置 BACKEND_CONFIG_YML，保留服务器现有 config\application.yml"
+            }
+
+            # 1. 备份当前（旧）jar，供失败回滚使用
+            #    注意：必须在解压新 jar 之前备份，否则 $jarPath 已被新版本覆盖，
+            #    备份出来的 .bak 就会是新 jar，回滚将失去意义。
+            if (Test-Path $jarPath) {
+                Copy-Item -Path $jarPath -Destination $bakJarPath -Force
+                Write-Host "已备份旧 jar -> $bakJarPath"
+            }
+
+            # 1.5 解压上传的 jar.gz，覆盖为新的 myauth.jar
+            #     解压失败则直接抛错，此时 $jarPath 仍是旧版本、旧进程未停，
+            #     线上不会被这次失败影响，回滚也不需要（旧 jar 还在）。
             if (Test-Path $gzJarPath) {
                 Write-Host "检测到压缩包 $gzJarPath，开始解压..."
                 # 用 .NET 流式 gzip，PowerShell 原生支持，不依赖 tar/7z
@@ -315,31 +370,6 @@ jobs:
                 Remove-Item -Path $gzJarPath -Force
                 $freshJar = (Get-Item $jarPath).Length
                 Write-Host "解压完成，jar 大小 $freshJar 字节"
-            }
-
-            # 0. 写出外部生产配置（jar 所在目录的 config\application.yml）
-            #    说明：用户服务器实际路径为 C:\wwwroot\myauth\config\application.yml，
-            #    这是 Spring Boot 标准外部 config 子目录约定，优先级高于 jar 内部配置，
-            #    且后续重传 jar 不会覆盖它。该文件作为主配置直接使用（不依赖 profile）。
-            #    整文件 Secret(BACKEND_CONFIG_YML) 直接写出覆盖；若未配置该 Secret，则保留服务器现有文件。
-            $configDir  = Join-Path $backendDir "config"
-            $prodConfig = Join-Path $configDir "application.yml"
-            if (-not (Test-Path $configDir)) {
-                New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-            }
-            if ($env:BACKEND_CONFIG_YML) {
-                # 写入 UTF-8 BOM（Windows PowerShell 默认 Set-Content 为 UTF-16，Spring 读取需 UTF-8）
-                $utf8 = New-Object System.Text.UTF8Encoding($true)
-                [System.IO.File]::WriteAllText($prodConfig, $env:BACKEND_CONFIG_YML, $utf8)
-                Write-Host "已用 BACKEND_CONFIG_YML 覆盖写出 config\application.yml"
-            } else {
-                Write-Host "WARN: 未配置 BACKEND_CONFIG_YML，保留服务器现有 config\application.yml"
-            }
-
-            # 1. 备份当前（旧）jar，供失败回滚使用
-            if (Test-Path $jarPath) {
-                Copy-Item -Path $jarPath -Destination $bakJarPath -Force
-                Write-Host "已备份旧 jar -> $bakJarPath"
             }
 
             # 2. 停止旧进程
@@ -422,34 +452,92 @@ jobs:
           fi
           yarn build
 
-      # 步骤 4：通过 SCP 上传前端 dist 产物到 Windows 服务器
+      # 步骤 4：通过 scp 上传前端 dist 产物到 Windows 服务器
+      #
       # 说明：target 目录对应宝塔网站根目录，如 C:/wwwroot/my.52shell.ltd/
       #
       # 稳定性增强（与后端上传一致）：
-      #   1. 升级到 scp-action v0.1.10，修复旧版断连卡死的 bug；
-      #   2. 启用 -C 压缩（前端 dist 是大量重复的 js/css，压缩率非常高，能大幅缩短传输时间并降低被 idle 掐断概率）；
-      #   3. 启用 retry 机制。
-      - name: Upload frontend dist to Windows server
-        uses: appleboy/scp-action@v0.1.10
+      #   1. 放弃 appleboy/scp-action（v0.1.7 断连卡死 bug），改用原生 scp；
+      #   2. 先把整个 dist 打包成单个 tar.gz（前端 js/css 压缩率极高，可压到 1/10 甚至更低），
+      #      只上传 1 个文件，彻底规避"大量小文件 + idle SSH 通道"导致的断连；
+      #   3. scp 用 -C 压缩 + ServerAliveInterval 保活 + 自动重试 3 次；
+      #   4. 服务器端用 Windows 自带 bsdtar 解压（默认覆盖同名文件、不清空目录，
+      #      保留用户自行放置的静态资源，与旧 overwrite:false 语义一致）。
+      - name: Package and upload frontend dist
+        env:
+          WIN_HOST: ${{ secrets.WIN_HOST }}
+          WIN_PORT: ${{ secrets.WIN_PORT }}
+          WIN_USER: ${{ secrets.WIN_USER }}
+          WIN_SSH_KEY: ${{ secrets.WIN_SSH_KEY }}
+          FRONTEND_REMOTE_DIR: ${{ secrets.FRONTEND_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+
+          # 1. 打包 dist 为单个 tar.gz，文件名固定为 dist.tar.gz（gitignore 之外的临时产物）
+          echo "打包前端 dist ..."
+          tar -C myauth-web -czf dist.tar.gz dist
+          ls -la dist.tar.gz
+
+          # 2. 将 Windows 风格远程目录 C:/wwwroot/... 转为 scp 可识别的 /C:/wwwroot/...
+          remote_dir="${FRONTEND_REMOTE_DIR//\\//}"
+          case "$remote_dir" in
+            [A-Za-z]:/*)
+              remote_dir="/${remote_dir%%:*}:${remote_dir#*:}"
+              ;;
+          esac
+
+          echo "上传到: ${WIN_USER}@${WIN_HOST}:${remote_dir}/"
+          tmpkey="$(mktemp)"
+          printf '%s\n' "$WIN_SSH_KEY" > "$tmpkey"
+          chmod 600 "$tmpkey"
+          trap 'rm -f "$tmpkey" dist.tar.gz' EXIT
+
+          for attempt in 1 2 3; do
+            echo "===== scp 上传尝试 #$attempt ====="
+            if scp -C \
+                 -P "$WIN_PORT" \
+                 -i "$tmpkey" \
+                 -o StrictHostKeyChecking=no \
+                 -o UserKnownHostsFile=/dev/null \
+                 -o ConnectTimeout=30 \
+                 -o ServerAliveInterval=30 \
+                 -o ServerAliveCountMax=10 \
+                 dist.tar.gz "${WIN_USER}@${WIN_HOST}:${remote_dir}/dist.tar.gz"; then
+              echo "上传成功"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ERROR: 前端 scp 上传失败（已重试 3 次）"
+              exit 1
+            fi
+            echo "scp 失败，10 秒后重试..."
+            sleep 10
+          done
+
+      # 步骤 4.5：SSH 到服务器解压前端 dist
+      # 用 Windows 自带 bsdtar 解压 tar.gz，覆盖同名文件且不清空目录，
+      # 与旧 overwrite:false 语义一致（保留用户自行放置的静态资源）。
+      - name: Extract frontend dist on server
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          FRONTEND_REMOTE_DIR: ${{ secrets.FRONTEND_REMOTE_DIR }}
         with:
           host: ${{ secrets.WIN_HOST }}
           port: ${{ secrets.WIN_PORT }}
           username: ${{ secrets.WIN_USER }}
           # 使用私钥登录（密钥登录模式）
           key: ${{ secrets.WIN_SSH_KEY }}
-          # 递归上传整个 dist 目录，strip_components=2 会去掉 myauth-web/dist 两层路径
-          source: "myauth-web/dist/"
-          target: ${{ secrets.FRONTEND_REMOTE_DIR }}
-          strip_components: 2
-          # 注意：Windows 自带 tar 为 bsdtar(libarchive)，不支持 GNU tar 的 --overwrite 选项，
-          # 设 true 会报 "Option --overwrite is not supported" 而失败；bsdtar 解压默认即覆盖同名文件，
-          # 且不会清空目标目录（避免误删用户自行放置的静态资源），故此处必须为 false。
-          overwrite: false
-          # 启用 SSH 压缩传输，前端资源压缩收益最大
-          use_scp_compression: true
-          # 连接/上传失败时自动重试
-          retry: true
-          retry_count: 3
-          retry_interval: 10s
-          # 放宽命令超时
-          command_timeout: 30m
+          # Windows 服务器默认 shell 为 PowerShell
+          script: |
+            $dir = "$env:FRONTEND_REMOTE_DIR"
+            $tgz = Join-Path $dir "dist.tar.gz"
+            if (-not (Test-Path $tgz)) {
+              throw "未找到 $tgz，前端上传可能失败"
+            }
+            Write-Host "解压 $tgz 到 $dir ..."
+            # bsdtar 解压，-x 解包 -z 解 gzip -f 指定文件；
+            # --strip-components 1 去掉打包时最外层 dist/ 目录，使文件直接落到网站根目录；
+            # 默认覆盖同名文件、不清空目录（与旧 overwrite:false 语义一致，保留用户静态资源）
+            tar -xzf $tgz -C $dir --strip-components 1
+            Remove-Item -Path $tgz -Force
+            Write-Host "前端解压完成"
