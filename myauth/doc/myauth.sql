@@ -450,6 +450,7 @@ CREATE TABLE `ma_soft`  (
   `sign_time` int(10) NULL DEFAULT 30 COMMENT 'sign有效期(客户端与服务端的误差时间允许值)',
   `register` int(2) NULL DEFAULT 0 COMMENT '0=关闭注册，1=开启注册',
   `max_online_count` int(10) NULL DEFAULT 1 COMMENT '同账号最大在线数(0为不限制)',
+  `kick_login` int(2) NULL DEFAULT 0 COMMENT '是否允许顶号登录(0=达到上限拒绝新的登录，1=新登录顶掉旧会话)',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = MyISAM AUTO_INCREMENT = 1 CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic;
 

@@ -357,12 +357,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 }
 
                 Set<String> scan = redisUtil.scan("user:" + softC.getId() + ":" + userC.getUser() + ":*");
-                if (softC.getMaxOnlineCount() > 1 && scan.size() >= softC.getMaxOnlineCount()){
-                    return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
-                }
-                if (softC.getMaxOnlineCount().equals(1) && scan.size() == 1){
+                //maxOnlineCount小于等于0表示不限制在线数
+                if (softC.getMaxOnlineCount() != null && softC.getMaxOnlineCount() > 0 && scan.size() >= softC.getMaxOnlineCount()) {
+                    //达到或超过同账号最大在线数上限
+                    if (CheckUtils.isObjectEmpty(softC.getKickLogin()) || softC.getKickLogin().equals(0)) {
+                        //未开启顶号登录：拒绝新的登录
+                        return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
+                    }
+                    //开启顶号登录：删除多余的旧会话，保留 maxOnlineCount-1 个，让新登录顶替上线
+                    int delNum = scan.size() - softC.getMaxOnlineCount() + 1;
                     for (String s : scan) {
+                        if (delNum <= 0) {
+                            break;
+                        }
                         redisUtil.del(s);
+                        delNum--;
                     }
                 }
 
@@ -409,12 +418,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 }
 
                 Set<String> scan = redisUtil.scan("user:" + softC.getId() + ":" + userC.getUser() + ":*");
-                if (softC.getMaxOnlineCount() > 1 && scan.size() >= softC.getMaxOnlineCount()){
-                    return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
-                }
-                if (softC.getMaxOnlineCount().equals(1) && scan.size() == 1){
+                //maxOnlineCount小于等于0表示不限制在线数
+                if (softC.getMaxOnlineCount() != null && softC.getMaxOnlineCount() > 0 && scan.size() >= softC.getMaxOnlineCount()) {
+                    //达到或超过同账号最大在线数上限
+                    if (CheckUtils.isObjectEmpty(softC.getKickLogin()) || softC.getKickLogin().equals(0)) {
+                        //未开启顶号登录：拒绝新的登录
+                        return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
+                    }
+                    //开启顶号登录：删除多余的旧会话，保留 maxOnlineCount-1 个，让新登录顶替上线
+                    int delNum = scan.size() - softC.getMaxOnlineCount() + 1;
                     for (String s : scan) {
+                        if (delNum <= 0) {
+                            break;
+                        }
                         redisUtil.del(s);
+                        delNum--;
                     }
                 }
 
@@ -467,12 +485,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                     }
 
                     Set<String> scan = redisUtil.scan("user:" + softC.getId() + ":" + userC.getUser() + ":*");
-                    if (softC.getMaxOnlineCount() > 1 && scan.size() >= softC.getMaxOnlineCount()){
-                        return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
-                    }
-                    if (softC.getMaxOnlineCount().equals(1) && scan.size() == 1){
+                    //maxOnlineCount小于等于0表示不限制在线数
+                    if (softC.getMaxOnlineCount() != null && softC.getMaxOnlineCount() > 0 && scan.size() >= softC.getMaxOnlineCount()) {
+                        //达到或超过同账号最大在线数上限
+                        if (CheckUtils.isObjectEmpty(softC.getKickLogin()) || softC.getKickLogin().equals(0)) {
+                            //未开启顶号登录：拒绝新的登录
+                            return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
+                        }
+                        //开启顶号登录：删除多余的旧会话，保留 maxOnlineCount-1 个，让新登录顶替上线
+                        int delNum = scan.size() - softC.getMaxOnlineCount() + 1;
                         for (String s : scan) {
+                            if (delNum <= 0) {
+                                break;
+                            }
                             redisUtil.del(s);
+                            delNum--;
                         }
                     }
 
@@ -531,12 +558,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                     }
 
                     Set<String> scan = redisUtil.scan("user:" + softC.getId() + ":" + userC.getUser() + ":*");
-                    if (softC.getMaxOnlineCount() > 1 && scan.size() >= softC.getMaxOnlineCount()){
-                        return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
-                    }
-                    if (softC.getMaxOnlineCount().equals(1) && scan.size() == 1){
+                    //maxOnlineCount小于等于0表示不限制在线数
+                    if (softC.getMaxOnlineCount() != null && softC.getMaxOnlineCount() > 0 && scan.size() >= softC.getMaxOnlineCount()) {
+                        //达到或超过同账号最大在线数上限
+                        if (CheckUtils.isObjectEmpty(softC.getKickLogin()) || softC.getKickLogin().equals(0)) {
+                            //未开启顶号登录：拒绝新的登录
+                            return Result.error("此账号设备在线数已满，请离线某处后再重新登录");
+                        }
+                        //开启顶号登录：删除多余的旧会话，保留 maxOnlineCount-1 个，让新登录顶替上线
+                        int delNum = scan.size() - softC.getMaxOnlineCount() + 1;
                         for (String s : scan) {
+                            if (delNum <= 0) {
+                                break;
+                            }
                             redisUtil.del(s);
+                            delNum--;
                         }
                     }
 

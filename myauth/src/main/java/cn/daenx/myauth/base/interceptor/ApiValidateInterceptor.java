@@ -126,7 +126,9 @@ public class ApiValidateInterceptor extends BaseInterceptor {
             if (CheckUtils.isObjectEmpty(user)) {
                 return reject(response, "用户未登录");
             }
-            if (soft.getMaxOnlineCount().equals(1)) {
+            //仅在开启顶号登录且限制为单设备在线时，校验是否被顶号
+            if (soft.getMaxOnlineCount() != null && soft.getMaxOnlineCount().equals(1)
+                    && soft.getKickLogin() != null && soft.getKickLogin().equals(1)) {
                 if (!user.getToken().equals(token)) {
                     return reject(response, "账号可能异地登录，请重新登录");
                 }

@@ -73,5 +73,9 @@ public class Soft extends Model {
      * 同账号最大在线数(0为不限制)
      */
     private Integer maxOnlineCount;
+    /**
+     * 是否允许顶号登录(0=达到上限拒绝新的登录，1=新登录顶掉旧会话)
+     */
+    private Integer kickLogin;
 
 }

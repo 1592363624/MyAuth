@@ -120,6 +120,16 @@
             :min="0"
           />
         </a-form-model-item>
+        <a-form-model-item
+          label="是否允许顶号登录"
+          prop="kickLogin"
+          extra="开启后新登录会顶掉旧会话；关闭后在线数达到上限时拒绝新的登录"
+        >
+          <a-select v-model="entity.kickLogin">
+            <a-select-option :key="1">允许顶号</a-select-option>
+            <a-select-option :key="0">禁止顶号</a-select-option>
+          </a-select>
+        </a-form-model-item>
       </a-form-model>
     </a-spin>
   </a-modal>
