@@ -2,6 +2,10 @@ spring:
   profiles:
     active: dev
 
+# 排序字段黑名单：这些字段是虚拟字段（对应实体 @TableField(exist=false)），数据库表中不存在对应列，
+# 若作为排序字段拼接进 ORDER BY 会导致 SQL 报错，故禁止对其排序（多个用英文逗号隔开）
+no-sort-columns: fromSoftName,fromVerName,onlineType
+
 # 根据需要决定是否要启用以下自定义配置
 #server:
 #  tomcat:

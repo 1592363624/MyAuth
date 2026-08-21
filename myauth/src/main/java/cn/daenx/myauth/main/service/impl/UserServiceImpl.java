@@ -17,6 +17,7 @@ import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Value;
@@ -61,6 +62,44 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private RoleMapper roleMapper;
     @Value("${genKey}")
     private String genKey;
+
+    /**
+     * 排序字段黑名单，从配置文件 no-sort-columns 读取，
+     * 用于过滤数据库表中不存在的虚拟字段，防止排序时拼接 ORDER BY 导致 SQL 报错
+     */
+    @Value("${no-sort-columns:}")
+    private String noSortColumns;
+
+    /**
+     * 过滤掉排序字段黑名单中的字段（虚拟字段，数据库表中无对应列）
+     *
+     * @param orders 原始排序条件列表
+     * @return 过滤后的排序条件列表
+     */
+    private List<OrderItem> filterNoSortColumns(List<OrderItem> orders) {
+        if (CheckUtils.isObjectEmpty(orders) || CheckUtils.isObjectEmpty(noSortColumns)) {
+            return orders;
+        }
+        // 将配置的黑名单字段转成下划线大写形式，与转换后的排序字段做比较，例如 fromVerName -> FROM_VER_NAME
+        List<String> noSortColumnList = new ArrayList<>();
+        for (String column : noSortColumns.split(",")) {
+            if (!CheckUtils.isObjectEmpty(column)) {
+                noSortColumnList.add(MyUtils.camelToUnderline(column.trim()));
+            }
+        }
+        List<OrderItem> result = new ArrayList<>();
+        for (OrderItem orderItem : orders) {
+            if (CheckUtils.isObjectEmpty(orderItem.getColumn())) {
+                continue;
+            }
+            // 命中黑名单的排序字段直接丢弃，避免生成无效的 ORDER BY 导致查询报错
+            if (noSortColumnList.contains(orderItem.getColumn())) {
+                continue;
+            }
+            result.add(orderItem);
+        }
+        return result;
+    }
 
 
     /**
@@ -1189,7 +1228,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             for (int i = 0; i < myPage.getOrders().size(); i++) {
                 myPage.getOrders().get(i).setColumn(MyUtils.camelToUnderline(myPage.getOrders().get(i).getColumn()));
             }
-            page.setOrders(myPage.getOrders());
+            page.setOrders(filterNoSortColumns(myPage.getOrders()));
         }
         IPage<User> msgPage = userMapper.selectPage(page, getQwUser(user));
         for (int i = 0; i < msgPage.getRecords().size(); i++) {
@@ -1429,7 +1468,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             for (int i = 0; i < myPage.getOrders().size(); i++) {
                 myPage.getOrders().get(i).setColumn(MyUtils.camelToUnderline(myPage.getOrders().get(i).getColumn()));
             }
-            page.setOrders(myPage.getOrders());
+            page.setOrders(filterNoSortColumns(myPage.getOrders()));
         }
         IPage<User> msgPage = userMapper.selectPage(page, getQwUserMy(user));
         for (int i = 0; i < msgPage.getRecords().size(); i++) {
