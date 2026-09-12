@@ -17,6 +17,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,7 @@ import java.util.stream.Collectors;
  * @author
  * @since 2022-05-16 20:24
  */
+@Slf4j
 @Service
 public class MailSendServiceImpl extends ServiceImpl<MailSendMapper, MailSend> implements IMailSendService {
 
@@ -115,7 +117,7 @@ public class MailSendServiceImpl extends ServiceImpl<MailSendMapper, MailSend> i
         try {
             emailService.sendFullTextEmail(theme, txt, new String[]{sendMail});
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("发送测试邮件失败", e);
             return Result.error("发送失败、请检查邮箱系统配置。");
         }
         return Result.ok("发送成功");

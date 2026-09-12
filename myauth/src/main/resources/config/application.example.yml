@@ -5,7 +5,9 @@
 #   2. 真实配置请勿提交，请放在 jar 所在目录的 config 子目录下
 #      （如 C:/wwwroot/myauth/config/application.yml），文件名即 application.yml（不带 -prod 后缀）；
 #      Spring Boot 会自动优先读取外部 config 目录配置，且重传 jar 不会覆盖它；
-#   3. 该文件作为主配置直接使用，不依赖 spring.profiles.active；
+#   3. 该文件作为主配置直接使用；必须显式指定 spring.profiles.active: prod，
+#      否则会沿用 jar 内置 application.yml 的 dev —— dev 下 logback 把全部 INFO 日志打到控制台，
+#      会被宝塔捕获进 service.log 导致文件无限膨胀；prod 下无控制台输出，只写 warn/error 文件；
 #   4. 敏感值使用 ${ENV} 占位符，由部署环境（服务器环境变量 / CI Secrets）注入，
 #      未注入时回退到冒号后的本地默认值（仅用于本地开发，不含真实敏感信息）。
 # ============================================================
@@ -19,12 +21,17 @@ server:
 # 日志输出路径，如果是linux，直接写log即可，如果是windows，那就写，例如：C:/wwwroot/myauth/log
 log-file-path: D:/1/MyAuth源码/log
 
-# mybatis-plus配置控制台打印完整带参数SQL语句
+# mybatis-plus SQL日志走slf4j（DEBUG级别）；生产环境logback root为INFO不会输出SQL
+# 不要改回StdOutImpl：它绕过logback直接写stdout，线上会被宝塔捕获进service.log导致文件暴涨
 mybatis-plus:
   configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 spring:
+  # 生产环境必须显式声明prod：jar内置默认是dev，会把全部日志打到控制台(service.log暴涨)
+  profiles:
+    active: prod
+
   datasource:
     # 数据库连接地址，格式：jdbc:mysql://<host>:<port>/<dbName>?serverTimezone=Asia/Shanghai
     url: jdbc:mysql://${MYAUTH_DB_HOST:localhost:3306}/${MYAUTH_DB_NAME:myauthtest}?serverTimezone=Asia/Shanghai

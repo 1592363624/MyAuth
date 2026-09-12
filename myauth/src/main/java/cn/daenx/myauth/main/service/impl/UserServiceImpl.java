@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import java.util.*;
 
 /**
@@ -34,6 +35,7 @@ import java.util.*;
  * @author DaenMax
  * @since 2022-01-07
  */
+@Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
     @Resource
@@ -167,7 +169,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                             String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                             emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{user.getQq()+"@qq.com"});
                         } catch (Exception e) {
-                            e.printStackTrace();
+                            log.error("发送邮箱提醒失败", e);
                             return Result.ok("注册成功、邮箱提醒用户失败、请检查邮箱系统配置。", jsonObject);
                         }
                     }
@@ -229,7 +231,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                                 String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                                 emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{user.getQq()+"@qq.com"});
                             } catch (Exception e) {
-                                e.printStackTrace();
+                                log.error("发送邮箱提醒失败", e);
                                 return Result.ok("注册成功、邮箱提醒用户失败、请检查邮箱系统配置。", jsonObject);
                             }
                         }
@@ -313,7 +315,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                                 String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                                 emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{user.getQq()+"@qq.com"});
                             } catch (Exception e) {
-                                e.printStackTrace();
+                                log.error("发送邮箱提醒失败", e);
                                 return Result.ok("注册成功、邮箱提醒用户失败、请检查邮箱系统配置。", jsonObject);
                             }
                         }
@@ -688,7 +690,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                                 String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                                 emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{userA.getQq()+"@qq.com"});
                             } catch (Exception e) {
-                                e.printStackTrace();
+                                log.error("发送邮箱提醒失败", e);
                                 return Result.error("授权已到期、邮箱提醒用户失败、请检查邮箱系统配置。");
                             }
                         }
@@ -889,7 +891,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                         String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                         emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{userA.getQq()+"@qq.com"});
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        log.error("发送邮箱提醒失败", e);
                         return Result.ok("使用卡密成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                     }
                 }
@@ -1037,7 +1039,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                     String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                     emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{userC.getQq()+"@qq.com"});
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log.error("发送邮箱提醒失败", e);
                     return Result.ok("解绑成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                 }
             }
@@ -1137,7 +1139,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                     String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                     emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{userA.getQq()+"@qq.com"});
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log.error("发送邮箱提醒失败", e);
                     return Result.ok("修改密码成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                 }
             }
@@ -1206,7 +1208,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                     String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                     emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{userR.getQq()+"@qq.com"});
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log.error("发送邮箱提醒失败", e);
                     return Result.ok("修改资料成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                 }
             }
@@ -1344,7 +1346,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                     String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                     emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{user.getQq()+"@qq.com"});
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log.error("发送邮箱提醒失败", e);
                     return Result.ok("修改成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                 }
             }
@@ -1409,7 +1411,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                     String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                     emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{user.getQq()+"@qq.com"});
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log.error("发送邮箱提醒失败", e);
                     return Result.ok("添加成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                 }
             }
@@ -1618,7 +1620,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                             String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                             emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{selectOne.getQq()+"@qq.com"});
                         } catch (Exception e) {
-                            e.printStackTrace();
+                            log.error("发送邮箱提醒失败", e);
                             return Result.ok("自助修改账号成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                         }
                     }
@@ -1669,7 +1671,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                             String sendTemplates = TemplateParseUtil.regParse(mailSend.getSendTemplates(),map);
                             emailService.sendFullTextEmail(mailSend.getSendTheme(),sendTemplates,new String[]{selectOne.getQq()+"@qq.com"});
                         } catch (Exception e) {
-                            e.printStackTrace();
+                            log.error("发送邮箱提醒失败", e);
                             return Result.ok("自助修改账号成功、邮箱提醒用户失败、请检查邮箱系统配置。");
                         }
                     }

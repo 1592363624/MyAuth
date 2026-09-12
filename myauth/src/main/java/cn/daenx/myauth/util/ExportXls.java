@@ -4,6 +4,8 @@ import cn.daenx.myauth.main.entity.Acard;
 import cn.daenx.myauth.main.entity.Card;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
@@ -15,6 +17,7 @@ import java.util.List;
  * 导出XLS文件
  * @author DaenMax
  */
+@Slf4j
 public class ExportXls {
 
 
@@ -33,7 +36,7 @@ public class ExportXls {
         try {
             response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(fileName, "UTF-8") + ".xlsx");
         } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
+            log.error("设置导出文件名失败", e);
         }
         //如果用这种方式导出，WPS或者office打开文件时会检测到是SYLK，即此文件是一个文本文件
         //这样没啥问题，但是如果第一个字符是"ID"，就会有弹窗警告提示，如果用小写的"id"或者其他字符就不会再有弹窗提示
@@ -48,7 +51,7 @@ public class ExportXls {
             outputStream.flush();
             outputStream.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error("导出XLS写入失败", e);
         }
         return;
     }
@@ -68,7 +71,7 @@ public class ExportXls {
         try {
             response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(fileName, "UTF-8") + ".xlsx");
         } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
+            log.error("设置导出文件名失败", e);
         }
         //如果用这种方式导出，WPS或者office打开文件时会检测到是SYLK，即此文件是一个文本文件
         //这样没啥问题，但是如果第一个字符是"ID"，就会有弹窗警告提示，如果用小写的"id"或者其他字符就不会再有弹窗提示
@@ -83,7 +86,7 @@ public class ExportXls {
             outputStream.flush();
             outputStream.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error("导出XLS写入失败", e);
         }
         return;
     }

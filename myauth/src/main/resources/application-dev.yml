@@ -7,10 +7,16 @@ server:
 # 日志输出路径，如果是linux，直接写log即可，如果是windows，那就写，例如：C:/wwwroot/myauth/log
 log-file-path: D:/1/MyAuth源码/log
 
-# mybatis-plus配置控制台打印完整带参数SQL语句
+# mybatis-plus SQL日志走slf4j，配合下方mapper包DEBUG级别，控制台仍可打印完整带参数SQL语句
+# 不要改回StdOutImpl：它绕过logback直接写stdout，线上会被宝塔捕获进service.log导致文件暴涨
 mybatis-plus:
   configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+# 开发环境打印SQL日志（生产环境root为INFO，不会输出，无需配置）
+logging:
+  level:
+    cn.daenx.myauth.main.mapper: debug
 
 
 spring:

@@ -301,7 +301,7 @@ public class MyUtils {
         try {
             date = sdf.parse(sdf.format(Long.parseLong(timeStamp) * 1000));
         } catch (ParseException e) {
-            e.printStackTrace();
+            log.error("时间解析失败", e);
         }
 
         return date;
@@ -319,7 +319,7 @@ public class MyUtils {
         try {
             timeStamp = String.valueOf(sdf.parse(sdf.format(date)).getTime() / 1000);
         } catch (ParseException e) {
-            e.printStackTrace();
+            log.error("时间解析失败", e);
         }
         return timeStamp;
     }

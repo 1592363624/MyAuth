@@ -1,6 +1,8 @@
 package cn.daenx.myauth.util;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
@@ -9,6 +11,7 @@ import java.net.UnknownHostException;
  *
  * @author DaenMax
  */
+@Slf4j
 public class IpUtil {
 
     public static String getIpAddr(HttpServletRequest request) {
@@ -23,13 +26,13 @@ public class IpUtil {
             // 多个ip获取第一个
             if (!isBlankIp(ip) && ip.length() > 15) ip = ip.split(",")[0];
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("获取客户端IP失败", e);
         }
         if ("0:0:0:0:0:0:0:1".equals(ip)) {
             try {
                 ip = InetAddress.getLocalHost().getHostAddress();
             } catch (UnknownHostException e) {
-                e.printStackTrace();
+                log.error("获取本机IP失败", e);
             }
         }
         return ip;
