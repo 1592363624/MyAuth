@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import cn.daenx.myauth.main.entity.Admin;
 import cn.daenx.myauth.main.entity.Role;
 import cn.daenx.myauth.util.CheckUtils;
+import cn.daenx.myauth.util.FeatureSignUtil;
 import cn.daenx.myauth.base.annotation.AdminLogin;
 import cn.daenx.myauth.base.annotation.NoEncryptNoSign;
 import cn.daenx.myauth.base.vo.Result;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
 
 /**
  * 前端web使用的API接口
@@ -229,10 +231,18 @@ public class SoftController {
                 || CheckUtils.isObjectEmpty(rules)) {
             return Result.error("keyId / softId / rules 不能为空");
         }
+        // 功能标识会拼进 canonical 签名字符串（| 和 , 作分隔），
+        // 含非法字符会导致客户端解析出错误的功能表，必须在入库前拦掉。
+        String invalid = FeatureSignUtil.validateRules(rules);
+        if (invalid != null) {
+            return Result.error(invalid);
+        }
         int rows = featureSignKeyService.updateRules(keyId, softId, rules);
         if (rows == 0) {
             return Result.error("密钥记录不存在");
         }
-        return Result.ok("规则已更新");
+        List<String> keys = FeatureSignUtil.extractFeatureKeys(rules);
+        log.info("软件 {} 的功能规则已更新，共 {} 个功能项: {}", softId, keys.size(), keys);
+        return Result.ok("规则已更新，当前共 " + keys.size() + " 个功能项");
     }
 }

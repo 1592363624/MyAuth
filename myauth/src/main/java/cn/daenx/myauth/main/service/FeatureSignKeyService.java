@@ -118,17 +118,25 @@ public class FeatureSignKeyService {
      * 为该软件生成一对新密钥并写入数据库。
      * 旧的启用记录保留（status 改为 0），便于按 kid 灰度轮换。
      *
+     * 功能规则沿用上一把密钥的配置：功能项是运营辛苦填的，
+     * 轮换密钥只该换公私钥，不该把功能声明清空。
+     *
      * @return 只含 kid 与 publicKey 的安全信息，私钥不返回
      */
     public Map<String, Object> generateAndSave(int softId) throws GeneralSecurityException {
         FeatureSignUtil.KeyPairResult pair = FeatureSignUtil.generateKeyPair();
+        SignKeyRecord previous = getActiveKey(softId);
+        String rules = (previous != null && previous.featureRules != null
+                && !previous.featureRules.isBlank())
+                ? previous.featureRules
+                : FeatureSignUtil.defaultRulesJson();
         jdbcTemplate.update("UPDATE ma_soft_sign_key SET status = 0 WHERE from_soft_id = ? AND status = 1", softId);
         jdbcTemplate.update(
                 "INSERT INTO ma_soft_sign_key " +
                         "(from_soft_id, kid, public_key, private_key, feature_rules, status, add_time) " +
                         "VALUES (?, ?, ?, ?, ?, 1, ?)",
                 softId, pair.kid, pair.publicKey, pair.privateKey,
-                FeatureSignUtil.defaultRulesJson(),
+                rules,
                 (int) (System.currentTimeMillis() / 1000));
         Map<String, Object> safe = new LinkedHashMap<>();
         safe.put("softId", softId);

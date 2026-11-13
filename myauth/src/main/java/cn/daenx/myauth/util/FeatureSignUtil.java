@@ -37,10 +37,13 @@ import java.util.UUID;
  */
 public class FeatureSignUtil {
 
-    /** 与客户端 internal/myauth/feature_config.go 的 knownFeatures 保持一致 */
-    public static final List<String> KNOWN_FEATURES = List.of(
-            "palschema", "pal-monitor", "admin", "boss_operations",
-            "points_system", "webshop", "cloud_pack");
+    /**
+     * 功能标识允许的字符：小写字母、数字、下划线、中划线。
+     * 之所以要限制，是因为功能标识要参与 canonical 签名字符串（用 | 和 , 分隔），
+     * 标识里若出现 , 或 | 会破坏分隔结构，导致客户端解析出错误的 features 表。
+     */
+    private static final java.util.regex.Pattern FEATURE_KEY_PATTERN =
+            java.util.regex.Pattern.compile("^[a-zA-Z0-9_-]{1,32}$");
 
     private FeatureSignUtil() {
     }
@@ -125,22 +128,33 @@ public class FeatureSignUtil {
 
     /**
      * 按 feature_rules JSON 和账号实时点数计算功能开关。
-     * 规则语义与客户端 evaluateRule 完全一致：
+     *
+     * 功能清单是**数据驱动**的：以规则 JSON 里 features 对象的 key 为准，
+     * 而不是平台内置一张固定表。MyAuth 是通用验证平台，
+     * 不同软件的功能集合完全不同（一个游戏工具和一套 ERP 不可能共用同一批功能标识），
+     * 因此功能项必须由每个软件自己在后台声明。
+     *
+     * 规则语义：
      *   1. deniedUsers 命中 → false
      *   2. allowedUsers 命中 → true
      *   3. point < minPoint → false
      *   4. 其余 → true
-     * 未配置规则的功能使用 defaultVisible。
+     * 未在 features 里声明的功能不会出现在票据中；
+     * 客户端遇到票据里没有的功能标识时会放行，所以「没声明」等于「没上锁」，
+     * 由调用方负责在未配置功能项时拒绝签发票据。
      *
      * @param disabledModulesOut 出参，回填全局禁用模块列表
      */
     public static Map<String, Boolean> evaluateFeatures(String rulesJson, String user, int point,
                                                         List<String> disabledModulesOut) {
         boolean defaultVisible = true;
-        JSONObject root = null;
+        JSONObject rules = null;
         if (rulesJson != null && !rulesJson.isBlank()) {
             try {
-                root = JSON.parseObject(rulesJson);
+                JSONObject root = JSON.parseObject(rulesJson);
+                if (root == null) {
+                    root = new JSONObject();
+                }
                 Boolean dv = root.getBoolean("defaultVisible");
                 if (dv != null) {
                     defaultVisible = dv;
@@ -151,40 +165,105 @@ public class FeatureSignUtil {
                         disabledModulesOut.add(String.valueOf(disabled.get(i)));
                     }
                 }
+                rules = root.getJSONObject("features");
             } catch (Exception e) {
-                // 规则配置写错时保守放行基础功能，但日志由调用方记录
-                root = null;
+                // 规则配置写错时按空规则处理，由调用方日志告警
+                rules = null;
             }
         }
-        JSONObject rules = root == null ? null : root.getJSONObject("features");
 
         Map<String, Boolean> result = new LinkedHashMap<>();
-        for (String feature : KNOWN_FEATURES) {
-            if (rules == null || !rules.containsKey(feature)) {
-                result.put(feature, defaultVisible);
-                continue;
+        if (rules != null) {
+            for (String feature : rules.keySet()) {
+                JSONObject rule = rules.getJSONObject(feature);
+                if (rule == null) {
+                    result.put(feature, defaultVisible);
+                    continue;
+                }
+                boolean visible;
+                if (contains(rule.getJSONArray("deniedUsers"), user)) {
+                    visible = false;
+                } else if (contains(rule.getJSONArray("allowedUsers"), user)) {
+                    visible = true;
+                } else {
+                    int minPoint = rule.getIntValue("minPoint");
+                    visible = point >= minPoint;
+                }
+                result.put(feature, visible);
             }
-            JSONObject rule = rules.getJSONObject(feature);
-            if (rule == null) {
-                result.put(feature, defaultVisible);
-                continue;
+        }
+        // 全局禁用模块即使没在 features 里声明也要下发 false，
+        // 否则客户端拿不到该 key 会按「未知功能」放行。
+        if (disabledModulesOut != null) {
+            for (String module : disabledModulesOut) {
+                result.put(module, false);
             }
-            boolean visible;
-            if (contains(rule.getJSONArray("deniedUsers"), user)) {
-                visible = false;
-            } else if (contains(rule.getJSONArray("allowedUsers"), user)) {
-                visible = true;
-            } else {
-                int minPoint = rule.getIntValue("minPoint");
-                visible = point >= minPoint;
-            }
-            // 全局禁用模块对所有人生效
-            if (disabledModulesOut != null && disabledModulesOut.contains(feature)) {
-                visible = false;
-            }
-            result.put(feature, visible);
         }
         return result;
+    }
+
+    /** 从规则 JSON 里取出已声明的功能标识列表，用于校验与日志 */
+    public static List<String> extractFeatureKeys(String rulesJson) {
+        List<String> keys = new ArrayList<>();
+        if (rulesJson == null || rulesJson.isBlank()) {
+            return keys;
+        }
+        try {
+            JSONObject root = JSON.parseObject(rulesJson);
+            JSONObject rules = root == null ? null : root.getJSONObject("features");
+            if (rules != null) {
+                keys.addAll(rules.keySet());
+            }
+        } catch (Exception ignored) {
+            // 解析失败返回空列表，由调用方决定如何处理
+        }
+        return keys;
+    }
+
+    /**
+     * 校验规则 JSON 的结构，返回错误信息；合法时返回 null。
+     * 后台保存前调用，避免把破坏签名分隔符的标识写进库。
+     */
+    public static String validateRules(String rulesJson) {
+        if (rulesJson == null || rulesJson.isBlank()) {
+            return "规则不能为空";
+        }
+        JSONObject root;
+        try {
+            root = JSON.parseObject(rulesJson);
+        } catch (Exception e) {
+            return "规则不是合法 JSON：" + e.getMessage();
+        }
+        if (root == null) {
+            return "规则不是合法 JSON 对象";
+        }
+        JSONObject features = root.getJSONObject("features");
+        if (features == null) {
+            return "规则缺少 features 对象";
+        }
+        for (String key : features.keySet()) {
+            if (!FEATURE_KEY_PATTERN.matcher(key).matches()) {
+                return "功能标识「" + key + "」不合法，只允许字母、数字、下划线、中划线，长度 1-32";
+            }
+            JSONObject rule = features.getJSONObject(key);
+            if (rule == null) {
+                return "功能「" + key + "」的规则必须是对象";
+            }
+            Object minPoint = rule.get("minPoint");
+            if (minPoint != null && !(minPoint instanceof Number)) {
+                return "功能「" + key + "」的解锁点数必须是数字";
+            }
+        }
+        JSONArray disabled = root.getJSONArray("disabledModules");
+        if (disabled != null) {
+            for (int i = 0; i < disabled.size(); i++) {
+                String module = String.valueOf(disabled.get(i));
+                if (!FEATURE_KEY_PATTERN.matcher(module).matches()) {
+                    return "全局禁用模块「" + module + "」不合法";
+                }
+            }
+        }
+        return null;
     }
 
     private static boolean contains(JSONArray array, String value) {
@@ -203,21 +282,16 @@ public class FeatureSignUtil {
         return s == null ? "" : s;
     }
 
-    /** 供后台展示用的规则默认值（新增软件时可预置） */
+    /**
+     * 新建密钥时的规则默认值。
+     * features 留空：功能项由每个软件自己在后台声明，平台不预置任何功能标识。
+     */
     public static String defaultRulesJson() {
         JSONObject root = new JSONObject(true);
         root.put("supportText", "感谢你的支持，这是我们持续维护的动力");
         root.put("defaultVisible", true);
         root.put("disabledModules", new ArrayList<>());
-        JSONObject features = new JSONObject(true);
-        for (String f : KNOWN_FEATURES) {
-            JSONObject rule = new JSONObject(true);
-            rule.put("minPoint", 0);
-            rule.put("allowedUsers", new ArrayList<>());
-            rule.put("deniedUsers", new ArrayList<>());
-            features.put(f, rule);
-        }
-        root.put("features", features);
+        root.put("features", new JSONObject(true));
         return root.toJSONString();
     }
 }

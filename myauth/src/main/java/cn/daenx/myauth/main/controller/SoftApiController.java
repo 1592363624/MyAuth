@@ -328,6 +328,14 @@ public class SoftApiController {
         Map<String, Boolean> features = FeatureSignUtil.evaluateFeatures(
                 key.featureRules, user.getUser(), point, disabledModules);
 
+        // 功能项由每个软件自己在后台声明。一个功能项都没声明时不能签发票据：
+        // 客户端遇到票据里没有的功能标识会按「未知功能」放行，
+        // 那样等于所有锁都是开着的，比直接报错更危险。
+        if (features.isEmpty()) {
+            log.warn("软件 {} 未声明任何功能项，拒绝签发功能票据", soft.getSkey());
+            return Result.error("该软件尚未配置功能项，请在后台「签名密钥 → 编辑规则」中添加");
+        }
+
         long exp = Long.parseLong(MyUtils.getTimeStamp()) + 300L; // 票据 5 分钟有效
         String payload = FeatureSignUtil.buildPayload(
                 key.kid, soft.getSkey(), user.getUser(), point, exp, nonce,

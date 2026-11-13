@@ -1,7 +1,7 @@
 <template>
   <a-modal
     :title="title"
-    width="72%"
+    width="76%"
     :visible="visible"
     :footer="null"
     @cancel="()=>{this.visible=false}"
@@ -88,6 +88,15 @@
       </span>
 
       <span
+        slot="featureCount"
+        slot-scope="text, record"
+      >
+        <a-tag :color="countFeatures(record) > 0 ? '#87d068' : '#f50'">
+          {{ countFeatures(record) }} 项
+        </a-tag>
+      </span>
+
+      <span
         slot="status"
         slot-scope="text"
       >
@@ -113,7 +122,7 @@
 
     <a-modal
       title="编辑功能规则"
-      width="72%"
+      width="80%"
       :visible="rulesVisible"
       :confirmLoading="rulesLoading"
       @ok="submitRules"
@@ -125,8 +134,12 @@
         style="margin-bottom: 12px"
       >
         <template slot="message">
-          规则由服务端计算后签名下发，客户端不再自行判断。下面每个功能的「解锁点数」填 0 表示所有人可用；
-          填正数表示该账号赞助点数达到这个数才解锁；填 -1 表示永久关闭。白名单/黑名单按账号填写，用逗号分隔。
+          <div style="line-height: 1.9">
+            功能项由本软件自己声明，不同软件的功能清单互不影响。
+            <b>「功能标识」必须与客户端代码里的字符串完全一致</b>（例如客户端调用
+            <code>RequireFeatureActive("webshop")</code>，这里就填 <code>webshop</code>），
+            填错等于没有上锁——客户端拿不到该标识会按「未知功能」放行。
+          </div>
         </template>
       </a-alert>
 
@@ -143,19 +156,32 @@
         </a-form-item>
       </a-form>
 
+      <div style="margin-bottom: 8px">
+        <a-button type="dashed" icon="plus" @click="addRow">添加功能项</a-button>
+        <span style="margin-left: 10px; color: #999; font-size: 12px">
+          解锁点数：0 = 所有人可用，正数 = 需达到该赞助点数，-1 = 永久关闭
+        </span>
+      </div>
+
       <a-table
         :columns="ruleColumns"
-        :rowKey="row => row.key"
+        :rowKey="row => row._uid"
         :dataSource="form.rows"
         :pagination="false"
         :bordered="true"
         size="small"
+        :locale="{ emptyText: '还没有配置任何功能项，点上面的「添加功能项」开始' }"
       >
+        <span slot="featureKey" slot-scope="text, record">
+          <a-input
+            v-model="record.key"
+            placeholder="如 webshop"
+            style="font-family: monospace"
+            @change="refreshRawText"
+          />
+        </span>
         <span slot="label" slot-scope="text, record">
-          {{ record.label }}
-          <a-tooltip :title="record.key">
-            <a-icon type="info-circle" style="color: #999; margin-left: 4px" />
-          </a-tooltip>
+          <a-input v-model="record.label" placeholder="如 交易市场（可留空）" @change="refreshRawText" />
         </span>
         <span slot="minPoint" slot-scope="text, record">
           <a-input-number
@@ -172,10 +198,15 @@
         <span slot="deniedUsers" slot-scope="text, record">
           <a-input v-model="record.deniedUsers" placeholder="留空表示无，多个用逗号分隔" @change="refreshRawText" />
         </span>
+        <span slot="action" slot-scope="text, record">
+          <a-popconfirm title="确认删除这个功能项？" @confirm="removeRow(record)">
+            <a style="color: #f5222d">删除</a>
+          </a-popconfirm>
+        </span>
       </a-table>
 
       <div style="margin-top: 12px; color: #999; font-size: 12px">
-        点数为负数的功能等价于加入「全局禁用模块」，对所有账号生效。
+        点数为 -1 的功能项会同时写入「全局禁用模块」，对所有账号生效。
       </div>
 
       <a-collapse style="margin-top: 12px">
@@ -186,7 +217,7 @@
             style="font-family: monospace"
             @change="onRawChange"
           />
-          <a-button size="small" style="margin-top: 8px" @click="syncFormFromText">按原文刷新上方表单</a-button>
+          <a-button size="small" style="margin-top: 8px" @click="syncFormFromText(false)">按原文刷新上方表单</a-button>
         </a-collapse-panel>
       </a-collapse>
     </a-modal>
@@ -195,33 +226,28 @@
 
 <script>
 const columns = [
-  { title: '密钥ID (kid)', align: 'center', dataIndex: 'kid', width: '20%', scopedSlots: { customRender: 'kid' } },
-  { title: '公钥（填入客户端 hardcoded.go）', align: 'center', dataIndex: 'publicKey', width: '38%', scopedSlots: { customRender: 'publicKey' } },
-  { title: '状态', align: 'center', dataIndex: 'status', width: '10%', scopedSlots: { customRender: 'status' } },
+  { title: '密钥ID (kid)', align: 'center', dataIndex: 'kid', width: '18%', scopedSlots: { customRender: 'kid' } },
+  { title: '公钥（填入客户端 hardcoded.go）', align: 'center', dataIndex: 'publicKey', width: '34%', scopedSlots: { customRender: 'publicKey' } },
+  { title: '功能项', align: 'center', dataIndex: 'featureCount', width: '9%', scopedSlots: { customRender: 'featureCount' } },
+  { title: '状态', align: 'center', dataIndex: 'status', width: '9%', scopedSlots: { customRender: 'status' } },
   { title: '生成时间', align: 'center', dataIndex: 'addTime', width: '18%', scopedSlots: { customRender: 'addTime' } },
-  { title: '操作', align: 'center', dataIndex: 'action', width: '14%', scopedSlots: { customRender: 'action' } }
+  { title: '操作', align: 'center', dataIndex: 'action', width: '12%', scopedSlots: { customRender: 'action' } }
 ]
-
-// 与后端 FeatureSignUtil.KNOWN_FEATURES 保持一致的展示名映射。
-// 后端不认识的 key 一律忽略，这里缺失的 key 会退化为显示原始 key。
-const FEATURE_LABELS = {
-  palschema: '帕鲁图鉴',
-  'pal-monitor': '帕鲁监控',
-  admin: '管理功能',
-  boss_operations: 'BOSS 运营',
-  points_system: '积分系统',
-  webshop: '交易市场',
-  cloud_pack: '云存档包'
-}
 
 const ruleColumns = [
-  { title: '功能', align: 'left', dataIndex: 'label', scopedSlots: { customRender: 'label' } },
-  { title: '解锁点数', align: 'center', dataIndex: 'minPoint', width: '15%', scopedSlots: { customRender: 'minPoint' } },
-  { title: '白名单账号', align: 'center', dataIndex: 'allowedUsers', width: '25%', scopedSlots: { customRender: 'allowedUsers' } },
-  { title: '黑名单账号', align: 'center', dataIndex: 'deniedUsers', width: '25%', scopedSlots: { customRender: 'deniedUsers' } }
+  { title: '功能标识（对应客户端代码）', align: 'left', dataIndex: 'key', width: '20%', scopedSlots: { customRender: 'featureKey' } },
+  { title: '显示名', align: 'left', dataIndex: 'label', width: '17%', scopedSlots: { customRender: 'label' } },
+  { title: '解锁点数', align: 'center', dataIndex: 'minPoint', width: '11%', scopedSlots: { customRender: 'minPoint' } },
+  { title: '白名单账号', align: 'center', dataIndex: 'allowedUsers', width: '18%', scopedSlots: { customRender: 'allowedUsers' } },
+  { title: '黑名单账号', align: 'center', dataIndex: 'deniedUsers', width: '18%', scopedSlots: { customRender: 'deniedUsers' } },
+  { title: '操作', align: 'center', dataIndex: 'action', width: '8%', scopedSlots: { customRender: 'action' } }
 ]
 
-// 默认规则：不填规则时用这个兜底，保证表格永远有行可编辑
+// 功能标识会拼进服务端签名的 canonical 字符串，含分隔符会破坏解析，前后端用同一套校验
+const FEATURE_KEY_RE = /^[a-zA-Z0-9_-]{1,32}$/
+
+let rowUidSeed = 0
+
 function buildDefaultRules () {
   return {
     supportText: '感谢你的支持，这是我们持续维护的动力',
@@ -229,6 +255,16 @@ function buildDefaultRules () {
     disabledModules: [],
     features: {}
   }
+}
+
+function splitList (s) {
+  if (!s) {
+    return []
+  }
+  return String(s)
+    .split(/[,，\s]+/)
+    .map(x => x.trim())
+    .filter(x => x.length > 0)
 }
 
 export default {
@@ -277,11 +313,25 @@ export default {
         this.loading = false
       })
     },
+    countFeatures (record) {
+      return this.parseFeatureCount(record && record.featureRules)
+    },
+    parseFeatureCount (rulesText) {
+      if (!rulesText) {
+        return 0
+      }
+      try {
+        const root = JSON.parse(rulesText)
+        return root && root.features ? Object.keys(root.features).length : 0
+      } catch (e) {
+        return 0
+      }
+    },
     handleGenerate () {
       const that = this
       this.$confirm({
         title: '确认生成新的密钥对？',
-        content: '旧密钥会置为停用。旧客户端必须重新填入新公钥并重新编译，否则会验签失败、受控功能被锁。',
+        content: '旧密钥会置为停用。旧客户端必须重新填入新公钥并重新编译，否则会验签失败、受控功能被锁。功能规则会沿用上一把密钥的配置。',
         onOk () {
           return that.$http.post('/myauth/web/genFeatureSignKey', { id: that.softId }).then(resJson => {
             if (resJson.success) {
@@ -315,23 +365,17 @@ export default {
         root = buildDefaultRules()
       }
       const features = root.features && typeof root.features === 'object' ? root.features : {}
-      const rows = []
-      // 先排已知功能，再补上规则里出现的未知 key（避免丢配置）
-      const keys = Object.keys(FEATURE_LABELS)
-      Object.keys(features).forEach(k => {
-        if (keys.indexOf(k) === -1) {
-          keys.push(k)
-        }
-      })
-      keys.forEach(k => {
+      // 以规则里实际声明的功能项为准，不做任何平台内置补齐
+      const rows = Object.keys(features).map(k => {
         const rule = features[k] || {}
-        rows.push({
+        return {
+          _uid: ++rowUidSeed,
           key: k,
-          label: FEATURE_LABELS[k] || k,
+          label: rule.label || '',
           minPoint: typeof rule.minPoint === 'number' ? rule.minPoint : 0,
           allowedUsers: (rule.allowedUsers || []).join(','),
           deniedUsers: (rule.deniedUsers || []).join(',')
-        })
+        }
       })
       this.form = {
         defaultVisible: root.defaultVisible !== false,
@@ -341,22 +385,45 @@ export default {
       this.formDirty = false
       return true
     },
-    // 表单改动后重新拼回 JSON 原文，提交时统一走 JSON
+    addRow () {
+      this.form.rows.push({
+        _uid: ++rowUidSeed,
+        key: '',
+        label: '',
+        minPoint: 0,
+        allowedUsers: '',
+        deniedUsers: ''
+      })
+      this.refreshRawText()
+    },
+    removeRow (record) {
+      const idx = this.form.rows.indexOf(record)
+      if (idx >= 0) {
+        this.form.rows.splice(idx, 1)
+      }
+      this.refreshRawText()
+    },
+    // 表单 -> JSON 原文
     composeRulesFromForm () {
       const features = {}
       const disabledModules = []
       this.form.rows.forEach(row => {
-        if (!row.key) {
+        const key = (row.key || '').trim()
+        if (!key) {
           return
         }
         const minPoint = typeof row.minPoint === 'number' ? row.minPoint : 0
-        features[row.key] = {
+        const rule = {
           minPoint,
           allowedUsers: splitList(row.allowedUsers),
           deniedUsers: splitList(row.deniedUsers)
         }
+        if (row.label && row.label.trim()) {
+          rule.label = row.label.trim()
+        }
+        features[key] = rule
         if (minPoint < 0) {
-          disabledModules.push(row.key)
+          disabledModules.push(key)
         }
       })
       return {
@@ -369,24 +436,47 @@ export default {
     onRawChange () {
       this.formDirty = true
     },
-    // 表单改动时把结果回写进高级区的 JSON 原文，用户展开就能看到对应关系，
-    // 同时把 formDirty 复位，提交时统一按表单拼装。
+    // 表单改动时回写 JSON 原文，让高级区始终反映当前表单
     refreshRawText () {
-      if (!this.form.rows.length) {
-        return
-      }
       this.rulesText = JSON.stringify(this.composeRulesFromForm(), null, 2)
       this.formDirty = false
     },
+    // 提交前本地校验，把明显错误挡在请求之前
+    validateForm () {
+      const seen = {}
+      for (let i = 0; i < this.form.rows.length; i++) {
+        const row = this.form.rows[i]
+        const key = (row.key || '').trim()
+        if (!key) {
+          this.$message.error(`第 ${i + 1} 行的功能标识不能为空`)
+          return false
+        }
+        if (!FEATURE_KEY_RE.test(key)) {
+          this.$message.error(`功能标识「${key}」不合法，只允许字母、数字、下划线、中划线，长度 1-32`)
+          return false
+        }
+        if (seen[key]) {
+          this.$message.error(`功能标识「${key}」重复了`)
+          return false
+        }
+        seen[key] = true
+      }
+      return true
+    },
     submitRules () {
-      // 表单改动会经 refreshRawText 实时回写到 rulesText，
-      // 高级区直接改原文时 rulesText 就是要提交的内容，两条路径最终都统一提交 rulesText。
+      // 表单改动会实时回写到 rulesText，高级区直接改原文时 rulesText 就是提交内容
       let parsed
       try {
         parsed = JSON.parse(this.rulesText)
       } catch (e) {
         this.$message.error('规则不是合法 JSON：' + e.message)
         return
+      }
+      if (!this.validateForm()) {
+        return
+      }
+      if (!parsed.features || Object.keys(parsed.features).length === 0) {
+        this.$message.warning('还没有配置任何功能项，保存后客户端将无法取得功能票据')
       }
       this.rulesLoading = true
       this.$http.post('/myauth/web/updFeatureRules', {
@@ -434,15 +524,5 @@ export default {
       return this.TimeHelper ? this.TimeHelper.getFormatDate(nS) : nS
     }
   }
-}
-
-function splitList (s) {
-  if (!s) {
-    return []
-  }
-  return String(s)
-    .split(/[,，\s]+/)
-    .map(x => x.trim())
-    .filter(x => x.length > 0)
 }
 </script>
