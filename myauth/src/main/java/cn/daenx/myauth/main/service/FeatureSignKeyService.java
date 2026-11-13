@@ -67,6 +67,33 @@ public class FeatureSignKeyService {
         public String featureRules;
     }
 
+    /**
+     * 取该软件当前启用的密钥；不存在时自动生成一把。
+     *
+     * 自动生成的动机：功能票据是「默认全开」的设计（defaultVisible=true、minPoint=0），
+     * 对还没打算做付费分级的软件来说，配不配密钥在行为上没有区别，
+     * 于是大多数接入方永远不会去后台点「生成新密钥」。
+     * 但客户端在缺失密钥时会静默回退到旧的点数逻辑，
+     * 等运营哪天想收紧功能，才发现这个软件从第一天起就没有签名保护。
+     * 这里改成首次签发时自动补一把，让「有密钥」成为默认状态。
+     *
+     * @param autoCreate true 时缺失即生成（客户端申请票据路径使用）
+     */
+    public SignKeyRecord getActiveKey(int softId, boolean autoCreate) {
+        SignKeyRecord rec = getActiveKey(softId);
+        if (rec != null || !autoCreate) {
+            return rec;
+        }
+        try {
+            generateAndSave(softId);
+            log.info("软件 {} 尚无功能签名密钥，已自动生成默认密钥", softId);
+        } catch (Exception e) {
+            log.error("自动生成功能签名密钥失败: softId={}", softId, e);
+            return null;
+        }
+        return getActiveKey(softId);
+    }
+
     /** 取该软件当前启用的密钥（按 id 倒序，最新生成的一把生效） */
     public SignKeyRecord getActiveKey(int softId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(

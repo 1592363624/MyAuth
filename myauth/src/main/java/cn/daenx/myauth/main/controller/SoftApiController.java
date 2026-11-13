@@ -314,10 +314,12 @@ public class SoftApiController {
             return Result.error("nonce不能为空");
         }
 
-        FeatureSignKeyService.SignKeyRecord key = featureSignKeyService.getActiveKey(soft.getId());
+        // autoCreate=true：软件首次申请票据时若还没配密钥，服务端自动生成一把，
+        // 避免接入方忘记去后台点「生成新密钥」导致客户端静默回退到旧点数逻辑。
+        FeatureSignKeyService.SignKeyRecord key = featureSignKeyService.getActiveKey(soft.getId(), true);
         if (key == null) {
-            log.warn("软件 {} 未配置功能签名密钥，拒绝签发功能票据", soft.getSkey());
-            return Result.error("该软件尚未配置功能签名密钥");
+            log.warn("软件 {} 的功能签名密钥自动生成失败，拒绝签发功能票据", soft.getSkey());
+            return Result.error("该软件尚未配置功能签名密钥，且自动生成失败");
         }
 
         // 实时点数：不用 obj_user.point（Redis 快照可能滞后于后台扣分/充值）
