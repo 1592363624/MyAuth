@@ -1,6 +1,8 @@
 package cn.daenx.myauth.main.service;
 
 import cn.daenx.myauth.util.FeatureSignUtil;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -20,11 +22,40 @@ import java.util.Map;
  *
  * @author Shell
  */
+@Slf4j
 @Service
 public class FeatureSignKeyService {
 
     @Resource
     private JdbcTemplate jdbcTemplate;
+
+    /**
+     * 启动时自动建表（幂等）。
+     * 表已存在时是无操作；数据库账号没有 DDL 权限时只记日志、不阻塞启动，
+     * 此时仍需手动执行 resources/db/feature_sign_migration.sql。
+     */
+    @PostConstruct
+    public void initSchema() {
+        try {
+            jdbcTemplate.execute(
+                    "CREATE TABLE IF NOT EXISTS ma_soft_sign_key (" +
+                            "id INT NOT NULL AUTO_INCREMENT," +
+                            "from_soft_id INT NOT NULL COMMENT '对应 ma_soft.id'," +
+                            "kid VARCHAR(32) NOT NULL COMMENT '密钥ID'," +
+                            "public_key VARCHAR(64) NOT NULL COMMENT 'Ed25519 公钥 raw32 Base64'," +
+                            "private_key VARCHAR(128) NOT NULL COMMENT 'Ed25519 私钥 PKCS8 Base64'," +
+                            "feature_rules TEXT NULL COMMENT '功能规则 JSON'," +
+                            "status TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用 0=停用'," +
+                            "add_time INT NOT NULL," +
+                            "PRIMARY KEY (id)," +
+                            "UNIQUE KEY uk_soft_kid (from_soft_id, kid)," +
+                            "KEY idx_soft_status (from_soft_id, status)" +
+                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='功能票据签名密钥'");
+        } catch (Exception e) {
+            log.warn("自动建表 ma_soft_sign_key 失败（可能数据库账号无 DDL 权限），" +
+                    "请手动执行 resources/db/feature_sign_migration.sql: {}", e.getMessage());
+        }
+    }
 
     /** 服务端内部使用的完整记录（含私钥），禁止出现在任何 HTTP 返回值中 */
     public static class SignKeyRecord {
@@ -79,10 +110,13 @@ public class FeatureSignKeyService {
         return safe;
     }
 
-    /** 列出该软件的公钥（后台展示用，不含私钥） */
+    /**
+     * 列出该软件的公钥与规则（后台展示/编辑用，不含私钥）。
+     * featureRules 不是敏感信息（客户端本来就能看到功能开关），可以回显。
+     */
     public List<Map<String, Object>> listPublicKeys(int softId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, kid, public_key, status, add_time FROM ma_soft_sign_key " +
+                "SELECT id, kid, public_key, feature_rules, status, add_time FROM ma_soft_sign_key " +
                         "WHERE from_soft_id = ? ORDER BY id DESC", softId);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> r : rows) {
@@ -90,6 +124,7 @@ public class FeatureSignKeyService {
             safe.put("id", r.get("id"));
             safe.put("kid", r.get("kid"));
             safe.put("publicKey", r.get("public_key"));
+            safe.put("featureRules", r.get("feature_rules"));
             safe.put("status", r.get("status"));
             safe.put("addTime", r.get("add_time"));
             result.add(safe);

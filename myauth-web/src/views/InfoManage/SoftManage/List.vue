@@ -258,6 +258,8 @@
           /> -->
           <a @click="handleEdit(record.id)">编辑</a>
           <a-divider type="vertical" />
+          <a @click="handleSignKey(record.id, record.name)">签名密钥</a>
+          <a-divider type="vertical" />
           <a @click="routeToUpdateLog(record.skey)">查看更新日志</a>
           <a-divider type="vertical" />
           <a @click="handleDelete(record.id)">删除</a>
@@ -270,6 +272,7 @@
       :afterSubmit="getDataList"
       :behaviorType="behaviorType"
     ></edit-form>
+    <sign-key ref="signKey"></sign-key>
     <!-- <div v-if="!isMobile()">
       <a-modal
         title="版本管理"
@@ -305,6 +308,7 @@
 
 <script>
 import EditForm from './EditForm'
+import SignKey from './SignKey'
 import { listMixin } from '@/utils/listMixin'
 /** 若需使用，请修改路径 */
 // import VersionsManage from './VersionsManage/List'
@@ -333,7 +337,8 @@ export default {
   mixins: [listMixin],
   // mixins: [mixin, mixinDevice],
   components: {
-    EditForm
+    EditForm,
+    SignKey
     // VersionsManage,
     // MsgManage,
     // CardPassManage
@@ -433,6 +438,9 @@ export default {
     handleEdit (id) {
       this.behaviorType = 2
       this.$refs.editForm.openForm(id)
+    },
+    handleSignKey (softId, softName) {
+      this.$refs.signKey.openForm(softId, softName)
     },
     handleDelete (id) {
       const thisObj = this
