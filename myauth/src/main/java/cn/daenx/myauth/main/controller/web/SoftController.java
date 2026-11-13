@@ -245,4 +245,50 @@ public class SoftController {
         log.info("软件 {} 的功能规则已更新，共 {} 个功能项: {}", softId, keys.size(), keys);
         return Result.ok("规则已更新，当前共 " + keys.size() + " 个功能项");
     }
+
+    /**
+     * 启用/停用某把密钥。
+     * 同一软件同时只允许一把启用：启用一把时其余密钥自动停用。
+     */
+    @NoEncryptNoSign
+    @AdminLogin
+    @PostMapping("updFeatureSignKeyStatus")
+    public Result updFeatureSignKeyStatus(HttpServletRequest request) {
+        JSONObject jsonObject = (JSONObject) request.getAttribute("json");
+        Long keyId = jsonObject.getLong("keyId");
+        Integer softId = jsonObject.getInteger("softId");
+        Integer status = jsonObject.getInteger("status");
+        if (CheckUtils.isObjectEmpty(keyId) || CheckUtils.isObjectEmpty(softId)
+                || CheckUtils.isObjectEmpty(status)) {
+            return Result.error("keyId / softId / status 不能为空");
+        }
+        if (status != 0 && status != 1) {
+            return Result.error("status 只能是 0（停用）或 1（启用）");
+        }
+        int rows = featureSignKeyService.updateStatus(keyId, softId, status);
+        if (rows == 0) {
+            return Result.error("密钥记录不存在");
+        }
+        log.info("软件 {} 的密钥 {} 已{}", softId, keyId, status == 1 ? "启用" : "停用");
+        return Result.ok(status == 1 ? "已启用，其余密钥已自动停用" : "已停用");
+    }
+
+    /** 删除某把密钥 */
+    @NoEncryptNoSign
+    @AdminLogin
+    @PostMapping("delFeatureSignKey")
+    public Result delFeatureSignKey(HttpServletRequest request) {
+        JSONObject jsonObject = (JSONObject) request.getAttribute("json");
+        Long keyId = jsonObject.getLong("keyId");
+        Integer softId = jsonObject.getInteger("softId");
+        if (CheckUtils.isObjectEmpty(keyId) || CheckUtils.isObjectEmpty(softId)) {
+            return Result.error("keyId / softId 不能为空");
+        }
+        int rows = featureSignKeyService.deleteKey(keyId, softId);
+        if (rows == 0) {
+            return Result.error("密钥记录不存在");
+        }
+        log.info("软件 {} 的密钥 {} 已删除", softId, keyId);
+        return Result.ok("已删除");
+    }
 }

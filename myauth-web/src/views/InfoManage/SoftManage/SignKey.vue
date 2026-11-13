@@ -117,6 +117,18 @@
         slot-scope="text, record"
       >
         <a @click="handleEditRules(record)">编辑规则</a>
+        <a-divider type="vertical" />
+        <a @click="handleToggleStatus(record)">{{ record.status == 1 ? '停用' : '启用' }}</a>
+        <a-divider type="vertical" />
+        <a-popconfirm
+          :title="record.status == 1
+            ? '这是当前启用的密钥，删除后客户端下次申请票据会自动生成新密钥，旧公钥将失效。确认删除？'
+            : '确认删除这把密钥？删除后不可恢复。'"
+          ok-text="删除"
+          @confirm="handleDelete(record)"
+        >
+          <a style="color: #f5222d">删除</a>
+        </a-popconfirm>
       </span>
     </a-table>
 
@@ -226,12 +238,12 @@
 
 <script>
 const columns = [
-  { title: '密钥ID (kid)', align: 'center', dataIndex: 'kid', width: '18%', scopedSlots: { customRender: 'kid' } },
-  { title: '公钥（填入客户端 hardcoded.go）', align: 'center', dataIndex: 'publicKey', width: '34%', scopedSlots: { customRender: 'publicKey' } },
-  { title: '功能项', align: 'center', dataIndex: 'featureCount', width: '9%', scopedSlots: { customRender: 'featureCount' } },
-  { title: '状态', align: 'center', dataIndex: 'status', width: '9%', scopedSlots: { customRender: 'status' } },
-  { title: '生成时间', align: 'center', dataIndex: 'addTime', width: '18%', scopedSlots: { customRender: 'addTime' } },
-  { title: '操作', align: 'center', dataIndex: 'action', width: '12%', scopedSlots: { customRender: 'action' } }
+  { title: '密钥ID (kid)', align: 'center', dataIndex: 'kid', width: '16%', scopedSlots: { customRender: 'kid' } },
+  { title: '公钥（填入客户端 hardcoded.go）', align: 'center', dataIndex: 'publicKey', width: '30%', scopedSlots: { customRender: 'publicKey' } },
+  { title: '功能项', align: 'center', dataIndex: 'featureCount', width: '8%', scopedSlots: { customRender: 'featureCount' } },
+  { title: '状态', align: 'center', dataIndex: 'status', width: '8%', scopedSlots: { customRender: 'status' } },
+  { title: '生成时间', align: 'center', dataIndex: 'addTime', width: '16%', scopedSlots: { customRender: 'addTime' } },
+  { title: '操作', align: 'center', dataIndex: 'action', width: '22%', scopedSlots: { customRender: 'action' } }
 ]
 
 const ruleColumns = [
@@ -349,6 +361,44 @@ export default {
       this.rulesText = record.featureRules || JSON.stringify(buildDefaultRules(), null, 2)
       this.syncFormFromText(true)
       this.rulesVisible = true
+    },
+    // 启用/停用密钥；启用后其余密钥由服务端自动置为停用
+    handleToggleStatus (record) {
+      const that = this
+      const enable = record.status != 1
+      this.$confirm({
+        title: enable ? '确认启用这把密钥？' : '确认停用这把密钥？',
+        content: enable
+          ? '启用后该软件的其他密钥会自动停用。客户端必须已内置这把密钥的公钥，否则验签失败、受控功能会被锁。'
+          : '若这是该软件唯一启用的密钥，停用后客户端将无法取得功能票据，下次申请时会自动生成新密钥，现有客户端的公钥随即失效。',
+        onOk () {
+          return that.$http.post('/myauth/web/updFeatureSignKeyStatus', {
+            keyId: record.id,
+            softId: that.softId,
+            status: enable ? 1 : 0
+          }).then(resJson => {
+            if (resJson.success) {
+              that.$message.success(resJson.msg)
+              that.loadList()
+            } else {
+              that.$message.error(resJson.msg)
+            }
+          })
+        }
+      })
+    },
+    handleDelete (record) {
+      this.$http.post('/myauth/web/delFeatureSignKey', {
+        keyId: record.id,
+        softId: this.softId
+      }).then(resJson => {
+        if (resJson.success) {
+          this.$message.success(resJson.msg)
+          this.loadList()
+        } else {
+          this.$message.error(resJson.msg)
+        }
+      })
     },
     // 把 JSON 原文解析进可视化表单；silent=true 时不弹错误提示
     syncFormFromText (silent) {

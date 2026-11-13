@@ -175,6 +175,34 @@ public class FeatureSignKeyService {
     }
 
     /**
+     * 启用/停用某把密钥。
+     * 同一软件同时只允许一把启用（客户端只会认 hardcoded 里的那把公钥），
+     * 启用一把时把该软件其余密钥置为停用。
+     *
+     * 先启用目标再停用其余，避免中途失败出现「没有任何启用密钥」的空窗。
+     *
+     * @return 受影响行数，0 表示密钥记录不存在
+     */
+    public int updateStatus(long keyId, int softId, int status) {
+        int rows = jdbcTemplate.update(
+                "UPDATE ma_soft_sign_key SET status = ? WHERE id = ? AND from_soft_id = ?",
+                status, keyId, softId);
+        if (rows > 0 && status == 1) {
+            jdbcTemplate.update(
+                    "UPDATE ma_soft_sign_key SET status = 0 WHERE from_soft_id = ? AND status = 1 AND id <> ?",
+                    softId, keyId);
+        }
+        return rows;
+    }
+
+    /** 删除某把密钥（物理删除，公钥/私钥记录一并清除） */
+    public int deleteKey(long keyId, int softId) {
+        return jdbcTemplate.update(
+                "DELETE FROM ma_soft_sign_key WHERE id = ? AND from_soft_id = ?",
+                keyId, softId);
+    }
+
+    /**
      * 从数据库读取实时点数。
      * 不用 @UserLogin 放进 Redis 的 obj_user.point：那份是登录时缓存的快照，
      * 后台充值/扣费后不一定同步刷新，直接拿它签票据会让点数调整延迟生效。
