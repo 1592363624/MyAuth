@@ -6,6 +6,7 @@ import cn.daenx.myauth.base.annotation.*;
 import cn.daenx.myauth.main.entity.Storage;
 import cn.daenx.myauth.main.service.*;
 import cn.daenx.myauth.util.CheckUtils;
+import cn.daenx.myauth.util.FeatureSignUtil;
 import cn.daenx.myauth.util.IpUtil;
 import cn.daenx.myauth.util.MyUtils;
 import cn.daenx.myauth.base.annotation.*;
@@ -23,6 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 软件使用API接口
@@ -46,6 +51,8 @@ public class SoftApiController {
     private IEventService eventService;
     @Resource
     private IStorageService storageService;
+    @Resource
+    private FeatureSignKeyService featureSignKeyService;
 
     /**
      * 初始化软件
@@ -274,6 +281,71 @@ public class SoftApiController {
             return Result.error("keyword不能为空");
         }
         return userService.getMsg(soft, version, keyword, ver);
+    }
+
+    /**
+     * 签发功能票据（feature token）
+     *
+     * 与登录/心跳接口的区别：point 不取自请求、也不取自 Redis 缓存快照，
+     * 而是由服务端从 ma_user 表实时读取，并由服务端按 feature_rules 直接算出
+     * features 布尔表后用 Ed25519 私钥签名。客户端只内嵌公钥验签，
+     * 因此伪造登录响应、篡改远程配置、搭假验证服务器都无法解锁功能。
+     *
+     * 返回 result：
+     *   payload - 待签名原文（v1|kid|skey|user|point|exp|nonce|deviceCode|features|disabledModules）
+     *   sig     - Ed25519 签名 Base64
+     *   exp     - 过期时间（Unix 秒）
+     *   kid     - 密钥 ID
+     *   features- 冗余字段，仅便于调试；客户端以 payload 内已签名的内容为准
+     */
+    @SoftValidated
+    @VersionValidated
+    @DataDecrypt
+    @SignValidated
+    @UserLogin
+    @BanValidated(is_ip = true, is_device_code = true, is_user = true)
+    @PostMapping("/featureToken")
+    public Result featureToken(HttpServletRequest request) {
+        JSONObject jsonObject = (JSONObject) request.getAttribute("json");
+        Soft soft = (Soft) request.getAttribute("obj_soft");
+        User user = (User) request.getAttribute("obj_user");
+        String nonce = jsonObject.getJSONObject("data").getString("nonce");
+        if (CheckUtils.isObjectEmpty(nonce)) {
+            return Result.error("nonce不能为空");
+        }
+
+        FeatureSignKeyService.SignKeyRecord key = featureSignKeyService.getActiveKey(soft.getId());
+        if (key == null) {
+            log.warn("软件 {} 未配置功能签名密钥，拒绝签发功能票据", soft.getSkey());
+            return Result.error("该软件尚未配置功能签名密钥");
+        }
+
+        // 实时点数：不用 obj_user.point（Redis 快照可能滞后于后台扣分/充值）
+        int point = featureSignKeyService.getRealtimePoint(user.getId());
+        List<String> disabledModules = new ArrayList<>();
+        Map<String, Boolean> features = FeatureSignUtil.evaluateFeatures(
+                key.featureRules, user.getUser(), point, disabledModules);
+
+        long exp = Long.parseLong(MyUtils.getTimeStamp()) + 300L; // 票据 5 分钟有效
+        String payload = FeatureSignUtil.buildPayload(
+                key.kid, soft.getSkey(), user.getUser(), point, exp, nonce,
+                user.getDeviceCode(), features, disabledModules);
+
+        String sig;
+        try {
+            sig = FeatureSignUtil.sign(payload, key.privateKey);
+        } catch (Exception e) {
+            log.error("功能票据签名失败: soft={}, kid={}", soft.getSkey(), key.kid, e);
+            return Result.error("功能票据签名失败");
+        }
+
+        JSONObject retJson = new JSONObject(true);
+        retJson.put("payload", payload);
+        retJson.put("sig", sig);
+        retJson.put("exp", exp);
+        retJson.put("kid", key.kid);
+        retJson.put("features", features);
+        return Result.ok("功能票据签发成功", retJson);
     }
 
     /**

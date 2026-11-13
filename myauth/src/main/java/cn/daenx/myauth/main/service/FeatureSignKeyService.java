@@ -1,0 +1,126 @@
+package cn.daenx.myauth.main.service;
+
+import cn.daenx.myauth.util.FeatureSignUtil;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+import jakarta.annotation.Resource;
+import java.security.GeneralSecurityException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 功能票据签名密钥存储（独立表 ma_soft_sign_key）。
+ *
+ * 用 JdbcTemplate 而不是挂在 Soft 实体上，原因：
+ * web/SoftController.getSoftList / getSoft 会把整个 Soft 实体序列化给后台浏览器，
+ * 密钥若挂在 soft 表上会随列表接口明文带出。独立表天然不会被这些接口查到。
+ *
+ * @author Shell
+ */
+@Service
+public class FeatureSignKeyService {
+
+    @Resource
+    private JdbcTemplate jdbcTemplate;
+
+    /** 服务端内部使用的完整记录（含私钥），禁止出现在任何 HTTP 返回值中 */
+    public static class SignKeyRecord {
+        public long id;
+        public int softId;
+        public String kid;
+        public String publicKey;
+        public String privateKey;
+        public String featureRules;
+    }
+
+    /** 取该软件当前启用的密钥（按 id 倒序，最新生成的一把生效） */
+    public SignKeyRecord getActiveKey(int softId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, from_soft_id, kid, public_key, private_key, feature_rules " +
+                        "FROM ma_soft_sign_key WHERE from_soft_id = ? AND status = 1 ORDER BY id DESC LIMIT 1",
+                softId);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> r = rows.get(0);
+        SignKeyRecord rec = new SignKeyRecord();
+        rec.id = ((Number) r.get("id")).longValue();
+        rec.softId = ((Number) r.get("from_soft_id")).intValue();
+        rec.kid = str(r.get("kid"));
+        rec.publicKey = str(r.get("public_key"));
+        rec.privateKey = str(r.get("private_key"));
+        rec.featureRules = str(r.get("feature_rules"));
+        return rec;
+    }
+
+    /**
+     * 为该软件生成一对新密钥并写入数据库。
+     * 旧的启用记录保留（status 改为 0），便于按 kid 灰度轮换。
+     *
+     * @return 只含 kid 与 publicKey 的安全信息，私钥不返回
+     */
+    public Map<String, Object> generateAndSave(int softId) throws GeneralSecurityException {
+        FeatureSignUtil.KeyPairResult pair = FeatureSignUtil.generateKeyPair();
+        jdbcTemplate.update("UPDATE ma_soft_sign_key SET status = 0 WHERE from_soft_id = ? AND status = 1", softId);
+        jdbcTemplate.update(
+                "INSERT INTO ma_soft_sign_key " +
+                        "(from_soft_id, kid, public_key, private_key, feature_rules, status, add_time) " +
+                        "VALUES (?, ?, ?, ?, ?, 1, ?)",
+                softId, pair.kid, pair.publicKey, pair.privateKey,
+                FeatureSignUtil.defaultRulesJson(),
+                (int) (System.currentTimeMillis() / 1000));
+        Map<String, Object> safe = new LinkedHashMap<>();
+        safe.put("softId", softId);
+        safe.put("kid", pair.kid);
+        safe.put("publicKey", pair.publicKey);
+        return safe;
+    }
+
+    /** 列出该软件的公钥（后台展示用，不含私钥） */
+    public List<Map<String, Object>> listPublicKeys(int softId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, kid, public_key, status, add_time FROM ma_soft_sign_key " +
+                        "WHERE from_soft_id = ? ORDER BY id DESC", softId);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> safe = new LinkedHashMap<>();
+            safe.put("id", r.get("id"));
+            safe.put("kid", r.get("kid"));
+            safe.put("publicKey", r.get("public_key"));
+            safe.put("status", r.get("status"));
+            safe.put("addTime", r.get("add_time"));
+            result.add(safe);
+        }
+        return result;
+    }
+
+    /** 更新功能规则 JSON（后台维护规则，服务端据此计算 features） */
+    public int updateRules(long keyId, int softId, String rulesJson) {
+        return jdbcTemplate.update(
+                "UPDATE ma_soft_sign_key SET feature_rules = ? WHERE id = ? AND from_soft_id = ?",
+                rulesJson, keyId, softId);
+    }
+
+    /**
+     * 从数据库读取实时点数。
+     * 不用 @UserLogin 放进 Redis 的 obj_user.point：那份是登录时缓存的快照，
+     * 后台充值/扣费后不一定同步刷新，直接拿它签票据会让点数调整延迟生效。
+     * 查询失败时回退到 0（保守，不误放权限），由调用方记录日志。
+     */
+    public int getRealtimePoint(int userId) {
+        try {
+            Integer p = jdbcTemplate.queryForObject(
+                    "SELECT point FROM ma_user WHERE id = ?", Integer.class, userId);
+            return p == null ? 0 : p;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o);
+    }
+}

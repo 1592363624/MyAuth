@@ -10,6 +10,7 @@ import cn.daenx.myauth.base.annotation.NoEncryptNoSign;
 import cn.daenx.myauth.base.vo.Result;
 import cn.daenx.myauth.base.vo.MyPage;
 import cn.daenx.myauth.main.entity.Soft;
+import cn.daenx.myauth.main.service.FeatureSignKeyService;
 import cn.daenx.myauth.main.service.ISoftService;
 import cn.daenx.myauth.util.RedisUtil;
 import com.alibaba.fastjson.JSONObject;
@@ -33,6 +34,8 @@ import jakarta.servlet.http.HttpServletRequest;
 public class SoftController {
     @Resource
     private ISoftService softService;
+    @Resource
+    private FeatureSignKeyService featureSignKeyService;
     @Resource
     private RedisUtil redisUtil;
 
@@ -176,5 +179,60 @@ public class SoftController {
             return Result.error("超级管理员无法使用此接口");
         }
         return softService.getMySoftListEx(admin);
+    }
+
+    /**
+     * 为软件生成一对功能票据签名密钥。
+     * 私钥写入 ma_soft_sign_key 后不再回显；返回值只含 kid 与 publicKey，
+     * 公钥由开发者复制进客户端 hardcoded.go 后重新编译。
+     */
+    @NoEncryptNoSign
+    @AdminLogin
+    @PostMapping("genFeatureSignKey")
+    public Result genFeatureSignKey(HttpServletRequest request) {
+        JSONObject jsonObject = (JSONObject) request.getAttribute("json");
+        Integer id = jsonObject.getInteger("id");
+        if (CheckUtils.isObjectEmpty(id)) {
+            return Result.error("软件ID不能为空");
+        }
+        try {
+            return Result.ok("密钥已生成，请复制公钥到客户端", featureSignKeyService.generateAndSave(id));
+        } catch (Exception e) {
+            log.error("生成功能签名密钥失败: softId={}", id, e);
+            return Result.error("生成失败: " + e.getMessage());
+        }
+    }
+
+    /** 列出某软件的公钥（不含私钥），用于后台核对与轮换 */
+    @NoEncryptNoSign
+    @AdminLogin
+    @PostMapping("listFeatureSignKeys")
+    public Result listFeatureSignKeys(HttpServletRequest request) {
+        JSONObject jsonObject = (JSONObject) request.getAttribute("json");
+        Integer id = jsonObject.getInteger("id");
+        if (CheckUtils.isObjectEmpty(id)) {
+            return Result.error("软件ID不能为空");
+        }
+        return Result.ok("获取成功", featureSignKeyService.listPublicKeys(id));
+    }
+
+    /** 维护该软件的功能规则 JSON（服务端据此计算 features） */
+    @NoEncryptNoSign
+    @AdminLogin
+    @PostMapping("updFeatureRules")
+    public Result updFeatureRules(HttpServletRequest request) {
+        JSONObject jsonObject = (JSONObject) request.getAttribute("json");
+        Long keyId = jsonObject.getLong("keyId");
+        Integer softId = jsonObject.getInteger("softId");
+        String rules = jsonObject.getString("rules");
+        if (CheckUtils.isObjectEmpty(keyId) || CheckUtils.isObjectEmpty(softId)
+                || CheckUtils.isObjectEmpty(rules)) {
+            return Result.error("keyId / softId / rules 不能为空");
+        }
+        int rows = featureSignKeyService.updateRules(keyId, softId, rules);
+        if (rows == 0) {
+            return Result.error("密钥记录不存在");
+        }
+        return Result.ok("规则已更新");
     }
 }
