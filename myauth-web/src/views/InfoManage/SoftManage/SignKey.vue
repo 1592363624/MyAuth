@@ -217,8 +217,17 @@
         </span>
       </a-table>
 
-      <div style="margin-top: 12px; color: #999; font-size: 12px">
-        点数为 -1 的功能项会同时写入「全局禁用模块」，对所有账号生效。
+      <div style="margin-top: 12px; font-size: 12px; line-height: 1.9">
+        <div>
+          <a-tag color="#108ee9">共 {{ form.rows.length }} 项</a-tag>
+          <a-tag color="#fa8c16">收费 {{ paidCount }} 项</a-tag>
+          <a-tag color="#87d068">免费 {{ freeCount }} 项</a-tag>
+          <a-tag v-if="disabledCount > 0" color="#f50">关闭 {{ disabledCount }} 项</a-tag>
+        </div>
+        <div style="color: #999; margin-top: 6px">
+          点数为 -1 的功能项会同时写入「全局禁用模块」，对所有账号生效。
+          没有列在这里的功能项等于免费开放（客户端拿不到该标识会按可见处理）。
+        </div>
       </div>
 
       <a-collapse style="margin-top: 12px">
@@ -301,7 +310,22 @@ export default {
       formDirty: false
     }
   },
+  computed: {
+    // 汇总计数：让运营一眼看出哪些是收费项，避免把免费功能误填成收费
+    paidCount () {
+      return this.form.rows.filter(r => this.rowMinPoint(r) > 0).length
+    },
+    freeCount () {
+      return this.form.rows.filter(r => this.rowMinPoint(r) === 0).length
+    },
+    disabledCount () {
+      return this.form.rows.filter(r => this.rowMinPoint(r) < 0).length
+    }
+  },
   methods: {
+    rowMinPoint (row) {
+      return typeof row.minPoint === 'number' ? row.minPoint : 0
+    },
     openForm (softId, softName) {
       this.softId = softId
       this.title = `功能票据密钥 - ${softName || ''}`

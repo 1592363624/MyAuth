@@ -260,6 +260,8 @@ export default {
       pagination: {
         current: 1,
         pageSize: 10,
+        showSizeChanger: true,
+        pageSizeOptions: ['10', '20', '50', '100', '200'],
         showTotal: (total, range) => `总数:${total} 当前:${range[0]}-${range[1]}`
       },
       filters: {},

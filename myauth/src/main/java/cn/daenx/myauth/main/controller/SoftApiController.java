@@ -355,6 +355,8 @@ public class SoftApiController {
         retJson.put("exp", exp);
         retJson.put("kid", key.kid);
         retJson.put("features", features);
+        // 解锁点数只用于客户端展示「还需 N 点」，不进签名 payload
+        retJson.put("requiredPoints", FeatureSignUtil.evaluateRequiredPoints(key.featureRules));
         return Result.ok("功能票据签发成功", retJson);
     }
 

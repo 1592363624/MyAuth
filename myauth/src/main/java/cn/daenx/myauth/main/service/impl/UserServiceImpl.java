@@ -1225,6 +1225,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      */
     @Override
     public Result getUserList(User user, MyPage myPage) {
+        // 单次SCAN统计该软件下每个账号的在线会话数，避免逐用户SCAN
+        Map<String, Integer> onlineCountMap = getOnlineCountMap(user.getFromSoftId());
+        // onlineType为Redis虚拟字段（数据库无对应列），需查询全量数据在内存中排序后手动分页
+        OrderItem onlineOrder = getOnlineOrder(myPage.getOrders());
+        if (onlineOrder != null) {
+            return getUserListByOnlineSort(user, myPage, onlineOrder, onlineCountMap);
+        }
         Page<User> page = new Page<>(myPage.getPageIndex(), myPage.getPageSize(), true);
         if (!CheckUtils.isObjectEmpty(myPage.getOrders())) {
             for (int i = 0; i < myPage.getOrders().size(); i++) {
@@ -1233,25 +1240,100 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             page.setOrders(filterNoSortColumns(myPage.getOrders()));
         }
         IPage<User> msgPage = userMapper.selectPage(page, getQwUser(user));
-        for (int i = 0; i < msgPage.getRecords().size(); i++) {
-            if (!CheckUtils.isObjectEmpty(msgPage.getRecords().get(i).getFromSoftId())) {
-                Soft obj = (Soft) redisUtil.get("id:soft:" + msgPage.getRecords().get(i).getFromSoftId());
-                msgPage.getRecords().get(i).setFromSoftName(obj.getName());
-            }
-            if (!CheckUtils.isObjectEmpty(msgPage.getRecords().get(i).getFromVerId())) {
-                Version obj2 = (Version) redisUtil.get("id:version:" + msgPage.getRecords().get(i).getFromVerId());
-                msgPage.getRecords().get(i).setFromVerName(obj2.getVer());
-            }
-            //User onlineUser = (User) redisUtil.get("user:" + msgPage.getRecords().get(i).getFromSoftId() + ":" + msgPage.getRecords().get(i).getUser());
-            Set<String> scan = redisUtil.scan("user:" + msgPage.getRecords().get(i).getFromSoftId() + ":" + msgPage.getRecords().get(i).getUser() + ":*");
+        fillUserExtras(msgPage.getRecords(), onlineCountMap);
+        return Result.ok("获取成功", msgPage);
+    }
 
-            if (scan.size() > 0){
-                msgPage.getRecords().get(i).setOnlineType(scan.size());
-            }else {
-                msgPage.getRecords().get(i).setOnlineType(0);
+    /**
+     * 从排序条件中提取在线状态排序条件（onlineType为虚拟字段，数据库表中无对应列）
+     *
+     * @param orders 排序条件列表
+     * @return 在线状态排序条件，无则返回null
+     */
+    private OrderItem getOnlineOrder(List<OrderItem> orders) {
+        if (CheckUtils.isObjectEmpty(orders)) {
+            return null;
+        }
+        for (OrderItem orderItem : orders) {
+            if (!CheckUtils.isObjectEmpty(orderItem.getColumn())
+                    && ("onlineType".equalsIgnoreCase(orderItem.getColumn()) || "ONLINE_TYPE".equalsIgnoreCase(orderItem.getColumn()))) {
+                return orderItem;
             }
         }
-        return Result.ok("获取成功", msgPage);
+        return null;
+    }
+
+    /**
+     * 单次SCAN统计某软件下每个账号的在线会话数
+     * key格式为 user:{softId}:{user}:{token}，token为Base64串不含冒号，
+     * 取最后一个冒号前的部分作为账号名，可兼容账号中带冒号的情况
+     *
+     * @param fromSoftId 软件id
+     * @return 账号 -> 在线会话数
+     */
+    private Map<String, Integer> getOnlineCountMap(Integer fromSoftId) {
+        Map<String, Integer> onlineCountMap = new HashMap<>();
+        if (CheckUtils.isObjectEmpty(fromSoftId)) {
+            return onlineCountMap;
+        }
+        String keyPrefix = "user:" + fromSoftId + ":";
+        Set<String> keys = redisUtil.scan(keyPrefix + "*");
+        for (String key : keys) {
+            String rest = key.substring(keyPrefix.length());
+            int lastColon = rest.lastIndexOf(':');
+            String userName = lastColon < 0 ? rest : rest.substring(0, lastColon);
+            onlineCountMap.merge(userName, 1, Integer::sum);
+        }
+        return onlineCountMap;
+    }
+
+    /**
+     * 填充用户的所属软件名、版本名和在线状态
+     *
+     * @param records        用户列表
+     * @param onlineCountMap 账号 -> 在线会话数
+     */
+    private void fillUserExtras(List<User> records, Map<String, Integer> onlineCountMap) {
+        for (User record : records) {
+            if (!CheckUtils.isObjectEmpty(record.getFromSoftId())) {
+                Soft obj = (Soft) redisUtil.get("id:soft:" + record.getFromSoftId());
+                record.setFromSoftName(obj.getName());
+            }
+            if (!CheckUtils.isObjectEmpty(record.getFromVerId())) {
+                Version obj2 = (Version) redisUtil.get("id:version:" + record.getFromVerId());
+                record.setFromVerName(obj2.getVer());
+            }
+            record.setOnlineType(onlineCountMap.getOrDefault(record.getUser(), 0));
+        }
+    }
+
+    /**
+     * 按在线状态排序：在线状态来自Redis无法在SQL中排序，故查询全量数据内存排序后手动分页
+     *
+     * @param user           查询条件
+     * @param myPage         分页参数
+     * @param onlineOrder    在线状态排序条件
+     * @param onlineCountMap 账号 -> 在线会话数
+     * @return
+     */
+    private Result getUserListByOnlineSort(User user, MyPage myPage, OrderItem onlineOrder, Map<String, Integer> onlineCountMap) {
+        List<User> allRecords = userMapper.selectList(getQwUser(user));
+        fillUserExtras(allRecords, onlineCountMap);
+        // 相同在线数时按id排序，保证各页数据稳定不重复
+        Comparator<User> comparator = Comparator.comparing(User::getOnlineType).thenComparing(User::getId);
+        if (!onlineOrder.isAsc()) {
+            comparator = comparator.reversed();
+        }
+        allRecords.sort(comparator);
+        Page<User> resultPage = new Page<>(myPage.getPageIndex(), myPage.getPageSize());
+        resultPage.setTotal(allRecords.size());
+        int fromIndex = (myPage.getPageIndex() - 1) * myPage.getPageSize();
+        if (fromIndex < 0 || fromIndex >= allRecords.size()) {
+            resultPage.setRecords(new ArrayList<>());
+        } else {
+            resultPage.setRecords(new ArrayList<>(allRecords.subList(fromIndex, Math.min(fromIndex + myPage.getPageSize(), allRecords.size()))));
+        }
+        return Result.ok("获取成功", resultPage);
     }
 
     /**

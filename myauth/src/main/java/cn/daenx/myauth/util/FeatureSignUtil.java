@@ -202,6 +202,34 @@ public class FeatureSignUtil {
         return result;
     }
 
+    /**
+     * 取出每个功能的解锁点数（minPoint），供客户端展示「还需 N 点」和锁图标。
+     *
+     * 这部分不进签名 payload（payload 里只有 features 布尔结论），
+     * 因为它只影响提示文案，被篡改也不会放宽授权。
+     */
+    public static Map<String, Integer> evaluateRequiredPoints(String rulesJson) {
+        Map<String, Integer> result = new LinkedHashMap<>();
+        if (rulesJson == null || rulesJson.isBlank()) {
+            return result;
+        }
+        try {
+            JSONObject root = JSON.parseObject(rulesJson);
+            JSONObject rules = root == null ? null : root.getJSONObject("features");
+            if (rules == null) {
+                return result;
+            }
+            for (String feature : rules.keySet()) {
+                JSONObject rule = rules.getJSONObject(feature);
+                int minPoint = rule == null ? 0 : rule.getIntValue("minPoint");
+                result.put(feature, Math.max(minPoint, 0));
+            }
+        } catch (Exception ignored) {
+            // 解析失败返回空表，客户端按 0 处理（不显示锁图标）
+        }
+        return result;
+    }
+
     /** 从规则 JSON 里取出已声明的功能标识列表，用于校验与日志 */
     public static List<String> extractFeatureKeys(String rulesJson) {
         List<String> keys = new ArrayList<>();
